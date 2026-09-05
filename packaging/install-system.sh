@@ -32,4 +32,9 @@ udevadm control --reload-rules
 systemctl daemon-reload
 systemctl enable --now marchybar-device.service
 systemctl is-active --quiet marchybar-device.service
+for ((attempt=0; attempt<100; attempt++)); do
+  [[ -S /run/marchybar/device.sock ]] && break
+  sleep 0.1
+done
+[[ -S /run/marchybar/device.sock ]] || { echo 'Device helper did not become ready. Check journalctl -u marchybar-device.service.' >&2; exit 1; }
 echo 'Device helper installed. Enable MarchyBar to activate the custom Touch Bar.'

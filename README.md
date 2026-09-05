@@ -1,0 +1,132 @@
+# MarchyBar
+
+Your Touch Bar, at home in Omarchy.
+
+MarchyBar is a native Omarchy shell plugin for Intel T2 MacBook Pro computers. It combines an editable Touch Bar with live controls, automatic app layouts, and an Omarchy-themed preset editor.
+
+**Compatibility target:** latest stable Omarchy (4.0.2 at the research snapshot), with the T2 Linux kernel and `appletbdrm`. Targets MacBookPro15,1–15,4 and MacBookPro16,1–16,4. Both 2170×60 and 2008×60 logical panels are supported; the renderer discovers actual DRM geometry and input ranges. See [validation](docs/VALIDATION.md) for the distinction between tested behavior and physical model coverage.
+
+## What you get
+
+- Six editable presets: Everyday, Focus, Media, Developer, Browser, and Classic.
+- Live media transport and seeking, workspaces, battery, clock, CPU, memory, and focused-app information.
+- Continuous volume, display brightness, keyboard brightness, and Touch Bar brightness sliders.
+- Ordered application rules with wildcard matching and optional window-title filters.
+- Preset creation, duplication, renaming, deletion, factory restoration, and JSON import/export.
+- Pages, a held-Fn page, adjustable widget widths, drag reordering, keyboard-accessible move buttons, undo/redo, and stale-edit protection.
+- A preview rendered by the physical device renderer, plus a 20-second trial with automatic rollback.
+- Current Omarchy theme colors, font, control styling, and corners.
+- Temporary device access, original firmware controls while locked/disabled, and suspend coordination without unloading the T2 bridge.
+
+## Install
+
+Start with a working T2 Linux installation of Omarchy. MarchyBar does not replace your kernel or install Apple firmware.
+
+Install dependencies from Arch repositories:
+
+```sh
+omarchy pkg add nodejs npm base-devel pkgconf cairo libdrm pango librsvg python-gobject acl brightnessctl playerctl wtype libpulse
+```
+
+Node 22 or newer is required; an existing compatible Node installation also works. Omarchy supplies Quickshell, Hyprland, systemd, and the native shell controls.
+
+For this local development checkout:
+
+```sh
+omarchy plugin add /home/thomas/Work/MarchyBar --yes --enable
+```
+
+For distribution, pass the URL of the repository containing these files to the same command. No public repository has been published by this project yet.
+
+Click **▰** in the Omarchy bar. The first launch builds a small native renderer in your user cache; subsequent launches reuse it. Open **Device → Set up Touch Bar**, authenticate the one-time helper installation, and enable the bar. An existing `tiny-dfr` or `touchbard` process must be stopped before enabling MarchyBar.
+
+The plugin's standard Omarchy installation never executes a privileged hook. The separate setup installs exactly:
+
+- `/usr/local/lib/marchybar/device-broker.py`
+- `/etc/systemd/system/marchybar-device.service`
+- `/etc/udev/rules.d/90-marchybar.rules`
+
+The renderer and all user actions run as your desktop user. The helper authenticates the active local session and leases the identified Touch Bar display, touch input, and built-in keyboard for Fn/wake detection. It does not grant membership in `input` or `video`, execute commands from presets, or unload `t2bce`.
+
+## Use
+
+Select a preset to edit it. Changes stay in a draft until **Save**. **Apply** pins the saved preset; **Automatic** resumes app matching. Rules are evaluated from top to bottom, then the default preset is used. Editing the layout preserves the last app context so opening the editor doesn't change the layout under your cursor.
+
+Choose a page and click a widget in the preview or list. Drag across the preview to reorder, or use the arrow buttons. Width is a relative share of the space remaining after minimum touch-target widths. A page that cannot fit either supported geometry is rejected before saving. Put additional controls on another page.
+
+**Try 20s** temporarily applies a draft and rolls back automatically. It never saves the draft. **Revert** ends the trial immediately. Closing with unsaved changes asks whether to discard them. **Reload** recovers from a stale-edit warning; **Reset** restores a bundled preset or deletes a custom one.
+
+A button can send a key chord, control media, select a workspace/page/preset, launch a desktop app, or run an argument array. Commands execute directly without a shell. To intentionally use a shell, explicitly choose an argument array such as `["bash", "-lc", "your command"]`. Imported actions only run when activated; review actions from other people before using them.
+
+A right click on the bar icon resumes Automatic mode. The Touch Bar's rightmost menu button opens the editor. Esc remains at the left on models without a physical Escape key.
+
+## Command line
+
+The installed entry point is `~/.config/omarchy/plugins/marchybar.touchbar/bin/marchybar`. You may symlink **this executable** into `~/.local/bin`; don't put symlinks inside the plugin directory.
+
+```sh
+marchybar open
+marchybar list
+marchybar apply media
+marchybar auto
+marchybar disable
+marchybar enable
+marchybar export everyday ~/everyday.json
+marchybar import ~/everyday.json
+marchybar diagnostics
+```
+
+## Files and updates
+
+User presets and settings live separately from plugin updates:
+
+```text
+~/.config/marchybar/presets/*.json
+~/.config/marchybar/settings.json
+~/.config/marchybar/rules.json
+~/.local/state/marchybar/last-good.json
+~/.cache/marchybar/native/<source-hash>/
+$XDG_RUNTIME_DIR/marchybar/control.sock
+```
+
+Bundled presets are immutable package files; editing one creates a user override. Restoring removes that override. Preset files are written atomically. Invalid files remain on disk and are reported rather than silently overwritten. Changes made externally take effect when the backend restarts.
+
+Use Omarchy's plugin update command for repository updates. If a release changes the device helper, run **Set up Touch Bar** again. The source, preset, and control protocol versions are explicit. On Omarchy 4.0.2 a shell restart may be needed after QML source updates because the live plugin loader can retain cached components.
+
+## Disable or uninstall
+
+Disabling the Touch Bar closes the renderer and restores the previous USB mode and brightness. To remove the helper and plugin while preserving presets:
+
+```sh
+marchybar disable
+marchybar uninstall-system
+omarchy plugin remove marchybar.touchbar --yes
+```
+
+User presets are deliberately retained. Remove `~/.config/marchybar` separately only if you want to erase them.
+
+## Development
+
+```sh
+npm ci --ignore-scripts
+npm run build
+npm test
+python tests/broker_test.py
+tests/test-qml.sh
+```
+
+Run a separate, hardware-free preview backend:
+
+```sh
+bin/marchybar preview --socket /tmp/marchybar-dev/control.sock \
+  --config /tmp/marchybar-dev/config --state /tmp/marchybar-dev/state
+MARCHYBAR_SOCKET=/tmp/marchybar-dev/control.sock bin/marchybar status
+```
+
+The normal daemon deliberately refuses simulation. Preview mode never leases devices or executes OS actions. Do not run the renderer as root. Omarchy rejects symlinks inside plugin packages, so `node_modules` and build output are excluded from Git and installed builds use an external cache.
+
+Read [architecture and protocol](docs/ARCHITECTURE.md), [validation](docs/VALIDATION.md), and the [research brief](research/MarchyBar-Research-Brief.md).
+
+## License
+
+GPL-3.0-or-later. The native rendering/input core is derived from `react-drm-for-touchbar`; see [THIRD_PARTY.md](THIRD_PARTY.md) for provenance and the pinned source revision. MarchyBar does not depend on its React application or settings UI.

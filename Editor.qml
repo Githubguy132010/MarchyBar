@@ -14,7 +14,7 @@ Item {
   property string omarchyPath: ""
   property var pluginRegistry: null
   property var barWidgetRegistry: null
-  readonly property var service: shell ? shell.serviceFor("marchybar.touchbar") : null
+  property var service: shell ? shell.serviceFor("marchybar.touchbar") : null
   readonly property var model: service ? service.snapshot : ({presets: [], rules: [], settings: {}, data: {}, hardware: {}})
   property bool opened: false
   property int tab: 0
@@ -25,6 +25,7 @@ Item {
   property int widgetIndex: 0
   property var history: []
   property var future: []
+  readonly property alias widgetTypeSelector: addType
   property var boxes: []
   property int previewWidth: 2170
   property string previewError: ""
@@ -60,14 +61,14 @@ Item {
   function copy(v) { return JSON.parse(JSON.stringify(v)) }
   function call(method, params, callback, revision) { if (service) service.request(method, params, callback, revision) }
   function open(payload) {
-    opened = true
+    opened = true; window.visible = true; presentTimer.restart()
     if (service) { service.editorOpen = true; service.heartbeat() }
     if (!draft && model.presets.length) load(model.activePreset || model.presets[0].id)
     if (!rulesDirty) loadRules()
   }
   function close() {
     guard(function() {
-      root.opened = false
+      root.opened = false; window.visible = false
       if (root.service) { root.service.editorOpen = false; root.service.heartbeat() }
       root.call("preview.close", {})
     })
@@ -82,7 +83,7 @@ Item {
     var p = model.presets.find(p => p.id === id)
     if (!p) return
     draft = copy(p); delete draft.bundled; delete draft.customized
-    savedDraft = JSON.stringify(draft); editRevision = model.revision
+    savedDraft = JSON.stringify(draft); editRevision = model.revision || ""
     pageIndex = 0; widgetIndex = 0; history = []; future = []; previewError = ""; previewTimer.restart()
   }
   function mutate(fn) {
@@ -112,7 +113,7 @@ Item {
     if (type === "slider") { w.channel = "volume"; w.label = "Volume" }
     mutate(d => d.pages[pageIndex].widgets.push(w)); widgetIndex = page.widgets.length-1
   }
-  function loadRules() { ruleDraft = copy(model.rules || []); rulesBaseline = JSON.stringify(ruleDraft); rulesRevision = model.revision }
+  function loadRules() { ruleDraft = copy(model.rules || []); rulesBaseline = JSON.stringify(ruleDraft); rulesRevision = model.revision || "" }
   function editRule(index, key, value) { var r = copy(ruleDraft); r[index][key] = value; ruleDraft = r }
   function moveRule(index, delta) { var r=copy(ruleDraft), to=index+delta; if(to<0||to>=r.length)return; r.splice(to,0,r.splice(index,1)[0]);ruleDraft=r }
   function defaultAction(type) {
@@ -128,6 +129,9 @@ Item {
       if (root.opened && root.draft) livePreview.restart()
     }
   }
+  onNoticeChanged: if(notice) noticeTimer.restart()
+  Timer { id:noticeTimer; interval:4500; onTriggered:root.notice="" }
+  Timer { id: presentTimer; interval: 200; onTriggered:root.call("editor.present",{}) }
   Timer { id: previewTimer; interval: 180; onTriggered: root.preview() }
   Timer { id: livePreview; interval: 400; onTriggered: root.preview() }
 
@@ -165,8 +169,8 @@ Item {
           Hint { text: "Your Touch Bar, at home in Omarchy." }
         }
         Item { Layout.fillWidth: true }
-        Label { text: root.model.status === "ready" ? "● Connected" : "○ " + (root.model.status || "Starting"); color: root.model.status === "ready" ? Color.accent : Color.muted }
-        Button { text: "Automatic"; selected: root.model.settings.automatic && !root.model.settings.pinnedPreset; onClicked: root.call("automatic",{}) }
+        Label { text: root.model.status === "ready" ? "● Connected" : "○ " + (({starting:"Starting", "setup-required":"Preview", "preview-only":"Preview", preview:"Preview", available:"Preview",disabled:"Disabled",recovering:"Reconnecting",error:"Needs attention",locked:"Desktop locked"})[root.model.status] || "Starting"); color: root.model.status === "ready" ? Color.accent : Color.muted }
+        Button { text: "Automatic"; selected: Boolean(root.model.settings.automatic && !root.model.settings.pinnedPreset); onClicked: root.call("automatic",{}) }
       }
       RowLayout {
         Repeater { model: ["Presets", "App rules", "Device"]
@@ -189,6 +193,7 @@ Item {
             Layout.preferredWidth:220; Layout.maximumWidth:220; Layout.fillHeight:true; spacing:8
             Hint { text:"YOUR PRESETS" }
             Controls.ScrollView {
+              contentWidth: availableWidth
               Layout.fillHeight:true; Layout.fillWidth:true; clip:true
               ColumnLayout { width:parent.width; spacing:4
                 Repeater { model:root.model.presets || []
@@ -197,7 +202,7 @@ Item {
               }
             }
             RowLayout {
-              Button { text:"+ New"; bordered:true; onClicked:root.guard(() => root.prompt("New preset", "My preset", name => root.call("preset.create",{name:name},(ok,p)=>{if(ok)root.load(p.id)}))) }
+              Button { objectName:"newPreset"; text:"+ New"; bordered:true; onClicked:root.guard(() => root.prompt("New preset", "My preset", name => root.call("preset.create",{name:name},(ok,p)=>{if(ok)root.load(p.id)}))) }
               Button { text:"Import"; onClicked:root.guard(() => {root.exporting=false;fileDialog.open()}) }
             }
             Hint { Layout.fillWidth:true; text:"Choose a preset to edit. Apply pins it; Automatic follows your app rules." }
@@ -205,7 +210,7 @@ Item {
           ColumnLayout {
             Layout.fillWidth:true; Layout.fillHeight:true; spacing:14; visible:root.draft!==null
             RowLayout {
-              Ui.TextField { Layout.fillWidth:true; text:root.draft ? root.draft.name : ""; placeholderText:"Preset name"; onTextEdited:root.mutate(d=>{d.name=text}) }
+              Ui.TextField { Layout.fillWidth:true; text:root.draft ? root.draft.name : ""; objectName:"presetName"; placeholderText:"Preset name"; onTextEdited:root.mutate(d=>{d.name=text}) }
               Button { text:"Duplicate"; onClicked:{var from=root.draft.id;var name=root.draft.name;root.guard(()=>root.prompt("Duplicate saved preset",name+" copy",value=>root.call("preset.create",{name:value,from:from},(ok,p)=>{if(ok)root.load(p.id)})))} }
               Button { text:"Export"; tooltipText:"Export the saved version"; onClicked:{root.exporting=true;fileDialog.open()} }
             }
@@ -228,8 +233,8 @@ Item {
               Hint { text:"LIVE PREVIEW · click to select · drag to reorder" }
               Item {
                 id:previewBox
-                Layout.fillWidth:true; implicitHeight:80
-                Image { anchors.fill:parent; fillMode:Image.Stretch; cache:false; source:root.service && root.service.previewPath ? "file://"+root.service.previewPath+"?v="+root.service.frame : "" }
+                Layout.fillWidth:true; implicitHeight:40
+                Image { id:previewImage; anchors.fill:parent; fillMode:Image.PreserveAspectFit; cache:false; source:root.service && root.service.previewPath ? "file://"+root.service.previewPath+"?v="+root.service.frame : "" }
                 Repeater { model:root.boxes
                   Rectangle {
                     id:cell
@@ -237,7 +242,8 @@ Item {
                     required property int index
                     x:modelData.x/root.previewWidth*previewBox.width
                     width:modelData.w/root.previewWidth*previewBox.width
-                    height:previewBox.height
+                    height:previewImage.paintedHeight
+                    y:(previewBox.height-height)/2
                     color:"transparent"; border.width:root.widgetIndex===index?2:0; border.color:Color.accent; radius:Style.cornerRadius
                     MouseArea {
                       anchors.fill:parent; cursorShape:Qt.OpenHandCursor
@@ -259,6 +265,7 @@ Item {
               ColumnLayout {
                 Layout.preferredWidth:230; Layout.fillHeight:true
                 Controls.ScrollView {
+              contentWidth: availableWidth
                   Layout.fillWidth:true; Layout.fillHeight:true; clip:true
                   ColumnLayout { width:parent.width
                     Repeater { model:root.page?root.page.widgets:[]
@@ -267,14 +274,15 @@ Item {
                   }
                 }
                 RowLayout {
-                  Ui.Dropdown { id:addType; Layout.fillWidth:true; options:root.model.widgetTypes || []; value:"button" }
+                  Ui.Dropdown { id:addType; objectName:"addWidgetType"; Layout.fillWidth:true; options:root.model.widgetTypes || []; value:"button"; onChanged: value => addType.value=value }
                   Button { text:"+"; tooltipText:"Add widget"; onClicked:root.addWidget(addType.value) }
                 }
               }
               Controls.ScrollView {
+              contentWidth: availableWidth
                 Layout.fillHeight:true; Layout.fillWidth:true; clip:true
                 ColumnLayout {
-                  width:parent.width; spacing:10; visible:root.widget!==null
+                  width:parent.width; spacing:10; visible:Boolean(root.widget!==null)
                   RowLayout {
                     Label { text:root.widget?root.widget.type.toUpperCase():""; font.bold:true; Layout.fillWidth:true }
                     Button { text:"←"; tooltipText:"Move left"; onClicked:root.moveWidget(root.widgetIndex,root.widgetIndex-1) }
@@ -287,39 +295,40 @@ Item {
                     Ui.TextField { Layout.preferredWidth:70; text:root.widget?String(root.widget.weight):"1"; validator:DoubleValidator {bottom:0.25;top:12;decimals:2} onEditingFinished:if(acceptableInput)root.changeWidget("weight",Number(text)) }
                     Hint { text:"Relative share of available space"; Layout.fillWidth:true }
                   }
-                  Ui.Dropdown { visible:root.widget && root.widget.type==="slider"; Layout.fillWidth:true; options:root.model.channels || []; value:root.widget?root.widget.channel || "volume":"volume"; onChanged:value=>root.changeWidget("channel",value) }
+                  Ui.Dropdown { visible:Boolean(root.widget && root.widget.type==="slider"); Layout.fillWidth:true; options:root.model.channels || []; value:root.widget?root.widget.channel || "volume":"volume"; onChanged:value=>root.changeWidget("channel",value) }
                   ColumnLayout {
-                    visible:root.widget && root.widget.type==="button"; Layout.fillWidth:true; spacing:10
+                    visible:Boolean(root.widget && root.widget.type==="button"); Layout.fillWidth:true; spacing:10
                     Hint { text:"ON TAP" }
                     Ui.Dropdown { Layout.fillWidth:true; options:["key","media","workspace","launch","command","preset","page"]; value:root.widget && root.widget.action?root.widget.action.type:"key"; onChanged:value=>root.changeWidget("action",root.defaultAction(value)) }
-                    Ui.TextField { Layout.fillWidth:true; visible:root.widget && root.widget.action && root.widget.action.type==="key"; text:root.widget && root.widget.action?root.widget.action.key || "":""; placeholderText:"Key (Return, F1, s…)"; onTextEdited:root.actionField("key",text) }
+                    Ui.TextField { Layout.fillWidth:true; visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="key"); text:root.widget && root.widget.action?root.widget.action.key || "":""; placeholderText:"Key (Return, F1, s…)"; onTextEdited:root.actionField("key",text) }
                     RowLayout {
-                      visible:root.widget && root.widget.action && root.widget.action.type==="key"
+                      visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="key")
                       Repeater { model:["ctrl","alt","shift","logo"]
-                        Button { required property string modelData; text:modelData; selected:root.widget && root.widget.action && (root.widget.action.modifiers || []).includes(modelData); onClicked:{var m=(root.widget.action.modifiers||[]).slice();var i=m.indexOf(modelData);if(i<0)m.push(modelData);else m.splice(i,1);root.actionField("modifiers",m)} }
+                        Button { required property string modelData; text:modelData; selected:Boolean(root.widget && root.widget.action && (root.widget.action.modifiers || []).includes(modelData)); onClicked:{var m=(root.widget.action.modifiers||[]).slice();var i=m.indexOf(modelData);if(i<0)m.push(modelData);else m.splice(i,1);root.actionField("modifiers",m)} }
                       }
                     }
-                    Ui.Dropdown { visible:root.widget && root.widget.action && root.widget.action.type==="media"; Layout.fillWidth:true; options:["play-pause","previous","next","stop"]; value:root.widget && root.widget.action?root.widget.action.command || "play-pause":"play-pause"; onChanged:value=>root.actionField("command",value) }
-                    Ui.TextField { Layout.fillWidth:true; visible:root.widget && root.widget.action && root.widget.action.type==="workspace"; text:root.widget && root.widget.action?String(root.widget.action.workspace||1):"1"; validator:IntValidator {bottom:1;top:99} onEditingFinished:if(acceptableInput)root.actionField("workspace",Number(text)) }
-                    Ui.TextField { Layout.fillWidth:true; visible:root.widget && root.widget.action && root.widget.action.type==="launch"; text:root.widget && root.widget.action?root.widget.action.desktop || "":""; placeholderText:"Application desktop ID"; onTextEdited:root.actionField("desktop",text) }
-                    Ui.TextField { Layout.fillWidth:true; visible:root.widget && root.widget.action && root.widget.action.type==="command"; text:root.widget && root.widget.action?JSON.stringify(root.widget.action.argv || []):"[]"; placeholderText:'["program", "argument"]'; onEditingFinished:{try{root.actionField("argv",JSON.parse(text))}catch(e){root.notice="Use a JSON array of command arguments"}} }
-                    Ui.Dropdown { visible:root.widget && root.widget.action && root.widget.action.type==="preset"; Layout.fillWidth:true; options:root.presetOptions; value:root.widget && root.widget.action?root.widget.action.preset || "everyday":"everyday"; onChanged:value=>root.actionField("preset",value) }
-                    Ui.Dropdown { visible:root.widget && root.widget.action && root.widget.action.type==="page"; Layout.fillWidth:true; options:root.pageOptions; value:root.widget && root.widget.action?root.widget.action.page || "":""; onChanged:value=>root.actionField("page",value) }
+                    Ui.Dropdown { visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="media"); Layout.fillWidth:true; options:["play-pause","previous","next","stop"]; value:root.widget && root.widget.action?root.widget.action.command || "play-pause":"play-pause"; onChanged:value=>root.actionField("command",value) }
+                    Ui.TextField { Layout.fillWidth:true; visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="workspace"); text:root.widget && root.widget.action?String(root.widget.action.workspace||1):"1"; validator:IntValidator {bottom:1;top:99} onEditingFinished:if(acceptableInput)root.actionField("workspace",Number(text)) }
+                    Ui.TextField { Layout.fillWidth:true; visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="launch"); text:root.widget && root.widget.action?root.widget.action.desktop || "":""; placeholderText:"Application desktop ID"; onTextEdited:root.actionField("desktop",text) }
+                    Ui.TextField { Layout.fillWidth:true; visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="command"); text:root.widget && root.widget.action?JSON.stringify(root.widget.action.argv || []):"[]"; placeholderText:'["program", "argument"]'; onEditingFinished:{try{root.actionField("argv",JSON.parse(text))}catch(e){root.notice="Use a JSON array of command arguments"}} }
+                    Ui.Dropdown { visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="preset"); Layout.fillWidth:true; options:root.presetOptions; value:root.widget && root.widget.action?root.widget.action.preset || "everyday":"everyday"; onChanged:value=>root.actionField("preset",value) }
+                    Ui.Dropdown { visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="page"); Layout.fillWidth:true; options:root.pageOptions; value:root.widget && root.widget.action?root.widget.action.page || "":""; onChanged:value=>root.actionField("page",value) }
                   }
-                  Hint { text:"HOLD ACTION · optional JSON" }
-                  Ui.TextField { Layout.fillWidth:true; text:root.widget && root.widget.holdAction?JSON.stringify(root.widget.holdAction):""; placeholderText:'{"type":"media","command":"play-pause"}'; onEditingFinished:{try{root.mutate(d=>{if(text.trim())d.pages[root.pageIndex].widgets[root.widgetIndex].holdAction=JSON.parse(text);else delete d.pages[root.pageIndex].widgets[root.widgetIndex].holdAction})}catch(e){root.notice="Hold action must be valid JSON"}} }
+                  Hint { visible:root.widget && root.widget.type==="button"; text:"HOLD ACTION · optional JSON" }
+                  Ui.TextField { visible:root.widget && root.widget.type==="button"; Layout.fillWidth:true; text:root.widget && root.widget.holdAction?JSON.stringify(root.widget.holdAction):""; placeholderText:'{"type":"media","command":"play-pause"}'; onEditingFinished:{try{root.mutate(d=>{if(text.trim())d.pages[root.pageIndex].widgets[root.widgetIndex].holdAction=JSON.parse(text);else delete d.pages[root.pageIndex].widgets[root.widgetIndex].holdAction})}catch(e){root.notice="Hold action must be valid JSON"}} }
                 }
               }
             }
             Line {}
             RowLayout {
+              Button { text:"Reload"; tooltipText:"Reload saved changes after a stale-edit warning"; onClicked:{var id=root.draft.id;root.guard(()=>root.load(id))} }
               Button { text:"Undo"; enabled:root.history.length>0; onClicked:root.undo() }
               Button { text:"Redo"; enabled:root.future.length>0; onClicked:root.redo() }
               Button { text:"Reset"; tooltipText:"Restore a bundled preset or delete a custom preset"; onClicked:{var p=root.model.presets.find(p=>p.id===root.draft.id);root.confirm(p.bundled?"Restore original preset?":"Delete this preset?",p.bundled?"Your edits to this preset will be removed.":"App rules and the default will use Everyday instead.",()=>root.call(p.bundled?"preset.restore":"preset.delete",{id:p.id,replacement:"everyday"},ok=>{if(ok)root.load(p.bundled?p.id:"everyday")}))} }
               Item { Layout.fillWidth:true }
               Hint { text:root.dirty?"Unsaved changes":"Saved" }
               Button { text:root.model.trialEnds?"Revert":"Try 20s"; onClicked:root.call(root.model.trialEnds?"revert":"try",root.model.trialEnds?{}:{preset:root.draft,page:root.page.id}) }
-              Button { text:"Save"; bordered:true; selected:root.dirty; enabled:root.dirty; onClicked:root.save() }
+              Button { objectName:"savePreset"; text:"Save"; bordered:true; selected:root.dirty; enabled:root.dirty; onClicked:root.save() }
               Button { text:"Apply"; bordered:true; enabled:!root.dirty; tooltipText:root.dirty?"Save your changes first":"Pin this preset"; onClicked:root.call("preset.apply",{id:root.draft.id}) }
             }
           }
@@ -330,6 +339,7 @@ Item {
           Hint { text:"Rules run from top to bottom. Use * for any text, ? for one character, and | for alternatives. A pinned preset pauses switching."; Layout.fillWidth:true }
           Label { text:"Current app: "+(root.model.data.app || "None"); color:Color.accent }
           Controls.ScrollView {
+              contentWidth: availableWidth
             Layout.fillWidth:true; Layout.fillHeight:true; clip:true
             ColumnLayout {
               width:parent.width; spacing:16
@@ -364,14 +374,15 @@ Item {
           }
         }
         Controls.ScrollView {
+              contentWidth: availableWidth
           clip:true
           ColumnLayout {
             width:parent.width; spacing:20
             Label { text:"Touch Bar"; font.bold:true; font.pixelSize:Style.font.heading }
             Label { text:(root.model.hardware.model || "Detecting hardware")+" · "+(root.model.hardware.kernel || ""); Layout.fillWidth:true }
-            Hint { text:"The one-time device helper gives MarchyBar access only to the Touch Bar and the built-in Fn key. Disabling restores the previous firmware mode."; Layout.fillWidth:true }
+            Hint { text:"The one-time device helper gives MarchyBar access only to the Touch Bar and the built-in keyboard for Fn and wake detection. Disabling restores the previous firmware mode."; Layout.fillWidth:true }
             RowLayout {
-              Button { text:"Set up device helper"; bordered:true; enabled:root.service && !root.model.hardware.broker; onClicked:root.service.setupSystem() }
+              Button { text:"Set up Touch Bar"; bordered:true; enabled:Boolean(root.service); onClicked:root.service.setupSystem() }
               Button { text:root.model.status==="ready"?"Disable Touch Bar":"Enable Touch Bar"; bordered:true; enabled:Boolean(root.model.hardware.broker); onClicked:root.call(root.model.status==="ready"?"hardware.disable":"hardware.enable",{}) }
               Button { text:"Refresh diagnostics"; onClicked:root.call("diagnostics",{},(ok,d)=>{if(ok)diagnostic.text=JSON.stringify(d,null,2)}) }
             }
@@ -380,7 +391,7 @@ Item {
             RowLayout { Hint { text:"Touch Bar brightness (1–255)"; Layout.preferredWidth:300 } Ui.TextField { Layout.preferredWidth:120; text:String(root.model.settings.brightness || 128); validator:IntValidator {bottom:1;top:255} onEditingFinished:if(acceptableInput)root.call("settings.save",{settings:{brightness:Number(text)}}) } }
             RowLayout { Hint { text:"Dim after seconds (0 = never)"; Layout.preferredWidth:300 } Ui.TextField { Layout.preferredWidth:120; text:String(root.model.settings.dimAfter || 0); validator:IntValidator {bottom:0;top:3600} onEditingFinished:if(acceptableInput)root.call("settings.save",{settings:{dimAfter:Number(text)}}) } }
             RowLayout { Hint { text:"Turn off after seconds (0 = never)"; Layout.preferredWidth:300 } Ui.TextField { Layout.preferredWidth:120; text:String(root.model.settings.offAfter || 0); validator:IntValidator {bottom:0;top:7200} onEditingFinished:if(acceptableInput)root.call("settings.save",{settings:{offAfter:Number(text)}}) } }
-            Hint { text:"Preview supports both T2 Touch Bar widths. MarchyBar discovers the real panel size and touch coordinates when enabled. App content is hidden when the desktop locks."; Layout.fillWidth:true }
+            Hint { text:"Preview supports both T2 Touch Bar widths. MarchyBar discovers the real panel size and touch coordinates when enabled. The original firmware controls return when the desktop locks."; Layout.fillWidth:true }
             Label { id:diagnostic; Layout.fillWidth:true; text:""; font.pixelSize:Style.font.bodySmall }
           }
         }
@@ -395,7 +406,7 @@ Item {
           id:dialogContent; anchors.left:parent.left;anchors.right:parent.right;anchors.top:parent.top;anchors.margins:24;spacing:16
           Label { text:root.promptVisible?root.promptTitle:root.confirmTitle; font.bold:true; Layout.fillWidth:true }
           Label { visible:!root.promptVisible; text:root.confirmText; Layout.fillWidth:true }
-          Ui.TextField { id:promptField; visible:root.promptVisible; Layout.fillWidth:true; text:root.promptValue; onTextEdited:root.promptValue=text; onAccepted:if(root.promptValue.trim()){var action=root.promptAction;root.promptVisible=false;action(root.promptValue.trim())} }
+          Ui.TextField { id:promptField; objectName:"promptField"; visible:root.promptVisible; Layout.fillWidth:true; text:root.promptValue; onTextEdited:root.promptValue=text; onAccepted:if(root.promptValue.trim()){var action=root.promptAction;root.promptVisible=false;action(root.promptValue.trim())} }
           RowLayout {
             Item { Layout.fillWidth:true }
             Button { text:"Cancel"; onClicked:{root.confirmAction=null;root.promptVisible=false} }

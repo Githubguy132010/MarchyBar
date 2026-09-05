@@ -25,6 +25,15 @@ SLEEPING = False
 RECOVERY = Path("/run/marchybar/lease.json")
 
 
+def save_journal(value):
+  temp = RECOVERY.with_suffix('.tmp')
+  with open(temp, 'w', opener=lambda p, flags: os.open(p, flags | os.O_NOFOLLOW, 0o600)) as file:
+    json.dump(value, file)
+    file.flush()
+    os.fsync(file.fileno())
+  os.replace(temp, RECOVERY)
+
+
 def command(args):
   return subprocess.run(args, check=True, capture_output=True, text=True, timeout=6,
                         env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}).stdout.strip()
@@ -127,7 +136,7 @@ class Lease:
           except OSError:
             pass
     # Journal before changing mode, so a broker restart can undo an interrupted lease.
-    RECOVERY.write_text(json.dumps({'original': self.original, 'brightness': self.original_brightness, 'acls': []}))
+    save_journal({'original': self.original, 'brightness': self.original_brightness, 'acls': []})
     os.chmod(RECOVERY, 0o600)
     mode(self.device, 2)
     for _ in range(40):
@@ -137,13 +146,18 @@ class Lease:
       time.sleep(0.1)
     else:
       raise RuntimeError('Custom display/input did not appear; original mode will be restored')
+    # udev/logind may still replace ACLs while assigning the isolated seat.
+    command(['/usr/bin/udevadm', 'settle', '--timeout=5'])
+    found = nodes()
+    if not found['drm'] or not found['touch']:
+      raise RuntimeError('Touch Bar disappeared during device setup')
     for key, file in found.items():
       if not file:
         continue
       st = os.stat(file)
       acl = command(['/usr/bin/getfacl', '-cp', file])
       self.acls.append((file, st.st_ino, st.st_rdev, acl))
-      RECOVERY.write_text(json.dumps({'original': self.original, 'brightness': self.original_brightness, 'acls': self.acls}))
+      save_journal({'original': self.original, 'brightness': self.original_brightness, 'acls': self.acls})
       command(['/usr/bin/setfacl', '-m', f'u:{self.uid}:{"rw" if key == "drm" else "r"}', file])
     self.light = backlight()
     return found
@@ -185,7 +199,7 @@ class Handler(socketserver.StreamRequestHandler):
     mine = None
     self.write_lock = threading.Lock()
     try:
-      self.request.settimeout(120)
+      self.request.settimeout(20)
       while True:
         raw = self.rfile.readline(4097)
         if not raw:
@@ -219,7 +233,8 @@ class Handler(socketserver.StreamRequestHandler):
             elif action == 'release':
               if mine:
                 mine.close()
-                LEASE = None
+                if LEASE is mine:
+                  LEASE = None
                 mine = None
               data = {'restored': True}
             elif action == 'brightness' and mine:
@@ -272,8 +287,23 @@ class SleepMonitor:
     self.inhibit()
     self.bus.signal_subscribe('org.freedesktop.login1', 'org.freedesktop.login1.Manager',
         'PrepareForSleep', '/org/freedesktop/login1', None, Gio.DBusSignalFlags.NONE, self.sleep)
+    GLib.timeout_add_seconds(2, self.audit_session)
     self.loop = GLib.MainLoop()
     threading.Thread(target=self.loop.run, daemon=True).start()
+
+  def audit_session(self):
+    global LEASE
+    with LOCK:
+      lease = LEASE
+    try:
+      if lease and not lease.closed and not active_local(lease.uid):
+        release_for_event('inactive')
+        with LOCK:
+          if LEASE is lease:
+            LEASE = None
+    except Exception as e:
+      print(f'Session audit: {e}', flush=True)
+    return True
 
   def inhibit(self):
     try:

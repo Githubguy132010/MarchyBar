@@ -107,7 +107,8 @@ export class LiveData extends EventEmitter {
     const cpu = this.lastCPU && total > this.lastCPU.total ? 100 * (1 - (idle - this.lastCPU.idle) / (total - this.lastCPU.total)) : 0;
     this.lastCPU = { total, idle };
     const mem = Object.fromEntries(read('/proc/meminfo').split('\n').map(l => { const m = l.match(/^(\w+):\s*(\d+)/); return m ? [m[1], Number(m[2])] : ['', 0]; }));
-    this.update({ cpu: clamp(cpu, 0, 100), memory: mem.MemTotal ? 100 * (1 - mem.MemAvailable / mem.MemTotal) : null });
+    const lid = dirs('/proc/acpi/button/lid').map(n => read('/proc/acpi/button/lid/' + n + '/state')).join(' ');
+    this.update({ lidClosed: /closed/i.test(lid), cpu: clamp(cpu, 0, 100), memory: mem.MemTotal ? 100 * (1 - mem.MemAvailable / mem.MemTotal) : null });
   }
   battery() {
     const name = dirs('/sys/class/power_supply').find(n => read(`/sys/class/power_supply/${n}/type`) === 'Battery');
