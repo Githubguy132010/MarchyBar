@@ -39,6 +39,11 @@ test('real daemon protocol: preview, CRUD, app layouts, privacy, export, rollbac
   const file=path.join(tmp,'export.json');await ok('file.export',{id:p.id,path:file});
   const imported=await ok('file.import',{path:file});assert.notEqual(imported.id,p.id);
   await ok('preset.delete',{id:imported.id,replacement:'everyday'});
+  await ok('settings.save',{settings:{brightness:0}});
+  assert.equal((await ok('get')).data.touchbar,0);
+  await app.setBrightness(0);assert.equal(app.store.settings.brightness,0);
+  assert.equal((await request('settings.save',{settings:{brightness:-1}})).ok,false);
+  assert.equal((await request('settings.save',{settings:{brightness:256}})).ok,false);
   assert.equal((await request('hardware.enable')).ok,false);
   assert.equal((await request('not-a-method')).ok,false);
   await ok('preview.close');

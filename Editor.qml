@@ -25,6 +25,7 @@ Item {
   property int widgetIndex: 0
   property var history: []
   property var future: []
+  readonly property alias brightnessEditor: brightnessField
   readonly property alias widgetTypeSelector: addType
   property var boxes: []
   property int previewWidth: 2170
@@ -388,9 +389,9 @@ Item {
             }
             Line {}
             RowLayout { Hint { text:"Default preset"; Layout.preferredWidth:220 } Ui.Dropdown { Layout.preferredWidth:260; options:root.presetOptions; value:root.model.settings.defaultPreset || "everyday"; onChanged:value=>root.call("settings.save",{settings:{defaultPreset:value}}) } }
-            RowLayout { Hint { text:"Touch Bar brightness (1–255)"; Layout.preferredWidth:300 } Ui.TextField { Layout.preferredWidth:120; text:String(root.model.settings.brightness || 128); validator:IntValidator {bottom:1;top:255} onEditingFinished:if(acceptableInput)root.call("settings.save",{settings:{brightness:Number(text)}}) } }
-            RowLayout { Hint { text:"Dim after seconds (0 = never)"; Layout.preferredWidth:300 } Ui.TextField { Layout.preferredWidth:120; text:String(root.model.settings.dimAfter || 0); validator:IntValidator {bottom:0;top:3600} onEditingFinished:if(acceptableInput)root.call("settings.save",{settings:{dimAfter:Number(text)}}) } }
-            RowLayout { Hint { text:"Turn off after seconds (0 = never)"; Layout.preferredWidth:300 } Ui.TextField { Layout.preferredWidth:120; text:String(root.model.settings.offAfter || 0); validator:IntValidator {bottom:0;top:7200} onEditingFinished:if(acceptableInput)root.call("settings.save",{settings:{offAfter:Number(text)}}) } }
+            RowLayout { Hint { text:"Touch Bar brightness (0–100%)"; Layout.preferredWidth:300 } SettingNumber { id:brightnessField; Layout.preferredWidth:120; savedValue:Math.round((root.model.settings.brightness ?? 128) / 255 * 100); minimum:0; maximum:100; onCommitted:value=>root.call("settings.save",{settings:{brightness:Math.round(value / 100 * 255)}}) } }
+            RowLayout { Hint { text:"Dim after seconds (0 = never)"; Layout.preferredWidth:300 } SettingNumber { Layout.preferredWidth:120; savedValue:root.model.settings.dimAfter ?? 0; maximum:3600; onCommitted:value=>root.call("settings.save",{settings:{dimAfter:value}}) } }
+            RowLayout { Hint { text:"Turn off after seconds (0 = never)"; Layout.preferredWidth:300 } SettingNumber { Layout.preferredWidth:120; savedValue:root.model.settings.offAfter ?? 0; maximum:7200; onCommitted:value=>root.call("settings.save",{settings:{offAfter:value}}) } }
             Hint { text:"Preview supports both T2 Touch Bar widths. MarchyBar discovers the real panel size and touch coordinates when enabled. The original firmware controls return when the desktop locks."; Layout.fillWidth:true }
             Label { id:diagnostic; Layout.fillWidth:true; text:""; font.pixelSize:Style.font.bodySmall }
           }

@@ -135,7 +135,7 @@ export class MarchyBar {
     this.status = this.previewOnly ? 'preview' : 'disabled'; this.refresh();
   }
   async setBrightness(value, final = true) {
-    const brightness = Math.round(clamp(value, 1, 100) / 100 * 255);
+    const brightness = Math.round(clamp(value, 0, 100) / 100 * 255);
     await this.device?.brightness(brightness);
     this.currentBrightness = brightness;
     if (final) this.store.saveSettings({ brightness }, this.store.revision); this.refresh();
@@ -145,7 +145,7 @@ export class MarchyBar {
     if (this.dimmed === dimmed && this.off === off) return;
     this.dimmed = dimmed; this.off = off;
     if (this.device) {
-      try { await this.device.brightness(off ? 0 : dimmed ? Math.max(1, Math.round(this.store.settings.brightness * 0.16)) : this.store.settings.brightness); }
+      try { await this.device.brightness(off ? 0 : dimmed ? Math.round(this.store.settings.brightness * 0.16) : this.store.settings.brightness); }
       catch (e) { this.fail(e.message); }
       if (!off) { this.lastFrame = null; this.draw(); }
     }
@@ -190,7 +190,7 @@ export class MarchyBar {
       case 'preset.export': { const p = this.store.get(params.id); delete p.bundled; delete p.customized; return p; }
       case 'preset.apply': this.applyPreset(params.id); return true;
       case 'rules.save': this.store.saveRules(params.rules, revision); this.refresh(); return true;
-      case 'settings.save': this.store.saveSettings(params.settings, revision); this.currentBrightness = this.store.settings.brightness; if (this.device) await this.device.brightness(this.off ? 0 : this.dimmed ? Math.max(1, Math.round(this.currentBrightness * .16)) : this.currentBrightness); this.refresh(); return true;
+      case 'settings.save': this.store.saveSettings(params.settings, revision); this.currentBrightness = this.store.settings.brightness; if (this.device) await this.device.brightness(this.off ? 0 : this.dimmed ? Math.round(this.currentBrightness * .16) : this.currentBrightness); this.refresh(); return true;
       case 'automatic': this.store.saveSettings({ automatic: true, pinnedPreset: null }, this.store.revision); this.revertTrial(); this.refresh(); return true;
       case 'preview': return this.renderPreview(params.preset, params.page, params.width);
       case 'preview.close': this.previewDraft = null; if (this.previewDisplay.geometry.width !== this.geometry.width) { this.previewDisplay.close(); this.previewDisplay = new Preview(this.geometry.width, 60); } this.lastFrame = null; this.draw(); return true;
