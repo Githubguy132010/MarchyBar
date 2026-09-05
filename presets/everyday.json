@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 1,
+  "id": "everyday",
+  "name": "Everyday",
+  "description": "Your workspace, music and essential controls.",
+  "defaultPage": "main",
+  "fnPage": "function",
+  "pages": [
+    {
+      "id": "main",
+      "name": "Main",
+      "widgets": [
+        {
+          "id": "workspaces",
+          "type": "workspaces",
+          "weight": 2,
+          "label": "Workspaces"
+        },
+        {
+          "id": "media",
+          "type": "media",
+          "weight": 3,
+          "label": "Now playing"
+        },
+        {
+          "id": "volume",
+          "type": "slider",
+          "weight": 2,
+          "label": "Volume",
+          "channel": "volume"
+        },
+        {
+          "id": "display",
+          "type": "slider",
+          "weight": 2,
+          "label": "Display",
+          "channel": "brightness"
+        },
+        {
+          "id": "battery",
+          "type": "battery",
+          "weight": 1,
+          "label": "Battery"
+        },
+        {
+          "id": "clock",
+          "type": "clock",
+          "weight": 1,
+          "label": "Clock"
+        }
+      ]
+    },
+    {
+      "id": "function",
+      "name": "Function keys",
+      "widgets": [
+        {
+          "id": "f1",
+          "type": "button",
+          "weight": 1,
+          "label": "F1",
+          "action": {
+            "type": "key",
+            "key": "F1",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f2",
+          "type": "button",
+          "weight": 1,
+          "label": "F2",
+          "action": {
+            "type": "key",
+            "key": "F2",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f3",
+          "type": "button",
+          "weight": 1,
+          "label": "F3",
+          "action": {
+            "type": "key",
+            "key": "F3",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f4",
+          "type": "button",
+          "weight": 1,
+          "label": "F4",
+          "action": {
+            "type": "key",
+            "key": "F4",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f5",
+          "type": "button",
+          "weight": 1,
+          "label": "F5",
+          "action": {
+            "type": "key",
+            "key": "F5",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f6",
+          "type": "button",
+          "weight": 1,
+          "label": "F6",
+          "action": {
+            "type": "key",
+            "key": "F6",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f7",
+          "type": "button",
+          "weight": 1,
+          "label": "F7",
+          "action": {
+            "type": "key",
+            "key": "F7",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f8",
+          "type": "button",
+          "weight": 1,
+          "label": "F8",
+          "action": {
+            "type": "key",
+            "key": "F8",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f9",
+          "type": "button",
+          "weight": 1,
+          "label": "F9",
+          "action": {
+            "type": "key",
+            "key": "F9",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f10",
+          "type": "button",
+          "weight": 1,
+          "label": "F10",
+          "action": {
+            "type": "key",
+            "key": "F10",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f11",
+          "type": "button",
+          "weight": 1,
+          "label": "F11",
+          "action": {
+            "type": "key",
+            "key": "F11",
+            "modifiers": []
+          }
+        },
+        {
+          "id": "f12",
+          "type": "button",
+          "weight": 1,
+          "label": "F12",
+          "action": {
+            "type": "key",
+            "key": "F12",
+            "modifiers": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "controls",
+      "name": "Controls",
+      "widgets": [
+        {
+          "id": "volume",
+          "type": "slider",
+          "weight": 2,
+          "label": "Volume",
+          "channel": "volume"
+        },
+        {
+          "id": "brightness",
+          "type": "slider",
+          "weight": 2,
+          "label": "Display",
+          "channel": "brightness"
+        },
+        {
+          "id": "keyboard",
+          "type": "slider",
+          "weight": 2,
+          "label": "Keyboard",
+          "channel": "keyboard"
+        },
+        {
+          "id": "touchbar",
+          "type": "slider",
+          "weight": 2,
+          "label": "Touch Bar",
+          "channel": "touchbar"
+        },
+        {
+          "id": "media",
+          "type": "media",
+          "weight": 3,
+          "label": "Now playing"
+        }
+      ]
+    }
+  ]
+}

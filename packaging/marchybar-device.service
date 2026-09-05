@@ -1,0 +1,27 @@
+[Unit]
+Description=MarchyBar Touch Bar device lease
+After=systemd-logind.service
+Wants=systemd-logind.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/marchybar/device-broker.py
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=marchybar
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=restart
+UMask=0077
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/sys /dev /run/marchybar
+PrivateTmp=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+TimeoutStopSec=8
+
+[Install]
+WantedBy=multi-user.target
