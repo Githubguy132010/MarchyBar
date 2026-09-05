@@ -1,0 +1,24 @@
+{
+  "name": "marchybar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native Omarchy Touch Bar presets and live controls for Intel T2 Macs",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "test": "node --test tests/*.test.mjs",
+    "start": "node backend/server.mjs",
+    "preview": "node backend/server.mjs --preview"
+  },
+  "dependencies": {
+    "node-addon-api": "8.3.1"
+  },
+  "devDependencies": {
+    "node-gyp": "12.4.0"
+  },
+  "gypfile": true,
+  "engines": {
+    "node": ">=22"
+  }
+}

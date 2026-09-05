@@ -1,0 +1,4 @@
+# Keep the custom Touch Bar display and touch surface off the desktop seat.
+# Access is leased to the active local user by marchybar-device.service.
+SUBSYSTEM=="drm", KERNEL=="card[0-9]*", DRIVERS=="appletbdrm", TAG-="master-of-seat", ENV{ID_SEAT}="seat-marchybar"
+SUBSYSTEM=="input", ATTRS{name}=="Apple Inc. Touch Bar Display Touchpad", ENV{ID_SEAT}="seat-marchybar", ENV{LIBINPUT_IGNORE_DEVICE}="1"

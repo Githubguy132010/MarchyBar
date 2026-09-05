@@ -1,0 +1,72 @@
+#!/bin/bash
+set -euo pipefail
+MARCHYBAR_ROOT=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
+
+prepare() {
+  if [[ -f "$MARCHYBAR_ROOT/build/Release/drm_backend.node" ]]; then
+    export MARCHYBAR_NATIVE_PATH="$MARCHYBAR_ROOT/build/Release/drm_backend.node"
+    return
+  fi
+  local fingerprint build_dir
+  fingerprint=$(python3 - "$MARCHYBAR_ROOT" <<'PY'
+import hashlib,sys
+from pathlib import Path
+p=Path(sys.argv[1]);h=hashlib.sha256()
+for f in sorted((p/'native/src').glob('*'))+[p/'package-lock.json',p/'binding.gyp']:
+  h.update(f.read_bytes())
+print(h.hexdigest()[:20])
+PY
+)
+  build_dir="${XDG_CACHE_HOME:-$HOME/.cache}/marchybar/native/$fingerprint"
+  export MARCHYBAR_NATIVE_PATH="$build_dir/build/Release/drm_backend.node"
+  if [[ -f $MARCHYBAR_NATIVE_PATH ]]; then return; fi
+  mkdir -p "$build_dir"
+  exec {build_lock}>"$build_dir/.lock"
+  flock "$build_lock"
+  if [[ ! -f $MARCHYBAR_NATIVE_PATH ]]; then
+    echo "Preparing MarchyBar's renderer…" >&2
+    pkg-config --exists cairo libdrm pangocairo librsvg-2.0 || {
+      echo "Missing build libraries. See README.md → Setup." >&2; return 1;
+    }
+    cp "$MARCHYBAR_ROOT/package.json" "$MARCHYBAR_ROOT/package-lock.json" "$MARCHYBAR_ROOT/binding.gyp" "$build_dir/"
+    cp -R "$MARCHYBAR_ROOT/native" "$build_dir/"
+    (cd "$build_dir" && npm ci --ignore-scripts --include=dev && npm run build) >&2
+  fi
+  flock -u "$build_lock"
+  exec {build_lock}>&-
+}
+
+action=${1:-open}
+if (( $# )); then shift; fi
+case "$action" in
+  prepare) prepare ;;
+  daemon) prepare; exec node "$MARCHYBAR_ROOT/backend/server.mjs" "$@" ;;
+  preview) prepare; exec node "$MARCHYBAR_ROOT/backend/server.mjs" --preview "$@" ;;
+  open) exec omarchy-shell shell summon marchybar.touchbar '{}' ;;
+  setup) exec pkexec /bin/bash "$MARCHYBAR_ROOT/packaging/install-system.sh" ;;
+  uninstall-system) exec pkexec /bin/bash "$MARCHYBAR_ROOT/packaging/install-system.sh" --remove ;;
+  help|--help|-h)
+    cat <<'HELP'
+MarchyBar — native Omarchy Touch Bar configuration
+
+  marchybar open                     Open the native preset editor
+  marchybar prepare                  Build the isolated native renderer cache
+  marchybar daemon                   Run the session backend
+  marchybar preview [--socket PATH]   Run without touching hardware
+  marchybar setup                    Install the privileged device helper
+  marchybar status                   Show status and active preset
+  marchybar list                     List presets
+  marchybar apply ID                 Pin a preset
+  marchybar auto                     Resume automatic app layouts
+  marchybar enable | disable         Use MarchyBar / restore previous bar mode
+  marchybar import FILE              Import an editable preset
+  marchybar export ID FILE           Export a preset as JSON
+  marchybar diagnostics              Print hardware/backend diagnostics
+  marchybar uninstall-system         Remove the device helper; keep presets
+  marchybar request METHOD JSON      Send a protocol request (advanced)
+
+Set MARCHYBAR_SOCKET to target an isolated preview instance.
+HELP
+    ;;
+  *) exec node "$MARCHYBAR_ROOT/backend/cli.mjs" "$action" "$@" ;;
+esac

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "marchybar.touchbar",
+  "name": "MarchyBar",
+  "version": "0.1.0",
+  "author": "MarchyBar contributors",
+  "license": "GPL-3.0-or-later",
+  "description": "Your Touch Bar, at home in Omarchy. Editable presets, live controls and automatic app layouts for Intel T2 Macs.",
+  "kinds": ["bar-widget", "panel", "service"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "panel": "Editor.qml",
+    "service": "Service.qml"
+  },
+  "barWidget": {
+    "displayName": "MarchyBar",
+    "description": "Touch Bar presets and settings",
+    "category": "Hardware",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
