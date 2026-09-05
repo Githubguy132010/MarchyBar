@@ -6,6 +6,8 @@ MarchyBar is a native Omarchy shell plugin for Intel T2 MacBook Pro computers. I
 
 **Compatibility target:** latest stable Omarchy (4.0.2 at the research snapshot), with the T2 Linux kernel and `appletbdrm`. Targets MacBookPro15,1–15,4 and MacBookPro16,1–16,4. Both 2170×60 and 2008×60 logical panels are supported; the renderer discovers actual DRM geometry and input ranges. See [validation](docs/VALIDATION.md) for the distinction between tested behavior and physical model coverage.
 
+![MarchyBar native preset editor](preview.png)
+
 ## What you get
 
 - Six editable presets: Everyday, Focus, Media, Developer, Browser, and Classic.
@@ -30,13 +32,13 @@ omarchy pkg add nodejs npm base-devel pkgconf cairo libdrm pango librsvg python-
 
 Node 22 or newer is required; an existing compatible Node installation also works. Omarchy supplies Quickshell, Hyprland, systemd, and the native shell controls.
 
-For this local development checkout:
+Install MarchyBar:
 
 ```sh
-omarchy plugin add /home/thomas/Work/MarchyBar --yes --enable
+omarchy plugin add https://github.com/Githubguy132010/MarchyBar --enable
 ```
 
-For distribution, pass the URL of the repository containing these files to the same command. No public repository has been published by this project yet.
+The first public release is **v0.1.0**. See [releases](https://github.com/Githubguy132010/MarchyBar/releases) for changes.
 
 Click **▰** in the Omarchy bar. The first launch builds a small native renderer in your user cache; subsequent launches reuse it. Open **Device → Set up Touch Bar**, authenticate the one-time helper installation, and enable the bar. An existing `tiny-dfr` or `touchbard` process must be stopped before enabling MarchyBar.
 
@@ -128,6 +130,10 @@ MARCHYBAR_SOCKET=/tmp/marchybar-dev/control.sock bin/marchybar status
 The normal daemon deliberately refuses simulation. Preview mode never leases devices or executes OS actions. Do not run the renderer as root. Omarchy rejects symlinks inside plugin packages, so `node_modules` and build output are excluded from Git and installed builds use an external cache.
 
 Read [architecture and protocol](docs/ARCHITECTURE.md), [validation](docs/VALIDATION.md), and the [research brief](research/MarchyBar-Research-Brief.md).
+
+## Contributing and support
+
+Bug reports and contributions are welcome through [GitHub issues](https://github.com/Githubguy132010/MarchyBar/issues) and pull requests. Include your Mac model, Omarchy and kernel versions, reproduction steps, and relevant diagnostics. Review diagnostics before sharing them. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development checks.
 
 ## License
 
