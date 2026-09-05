@@ -7,12 +7,14 @@ ShellRoot {
   QtObject {
     id: backend
     property var snapshot: ({presets:[testCase.fixture],rules:[],settings:{},data:{},hardware:{},revision:"r1",widgetTypes:["button","slider","clock"],channels:["volume"]})
+    property var lastRequest: null
     property bool editorOpen: false
     property string error: ""
     property string previewPath: ""
     property int frame: 0
     function heartbeat() {}
     function request(method, params, callback, revision) {
+      lastRequest = {method:method,params:params}
       if(method==="preview" && callback) callback(true,{boxes:[],geometry:{width:2170,height:60}})
       if(method==="preset.save" && callback) callback(true,params.preset)
     }
@@ -24,7 +26,7 @@ ShellRoot {
     interval:150;running:true
     onTriggered: {
       try {
-        for(var name of ["test_draftIsolationAndUndo","test_addAndMoveWidget","test_discardGuardAndSave","test_dropdownChangesWidgetType"]) { testCase.init();testCase[name]();console.log("MARCHYBAR_QML_PASS",name) }
+        for(var name of ["test_draftIsolationAndUndo","test_addAndMoveWidget","test_discardGuardAndSave","test_dropdownChangesWidgetType","test_brightnessDraftAndPercent"]) { testCase.init();testCase[name]();console.log("MARCHYBAR_QML_PASS",name) }
         console.log("MARCHYBAR_QML_ALL_PASSED")
       } catch(e) { console.error("MARCHYBAR_QML_FAILED",e.stack || String(e)) }
       Qt.quit()
@@ -55,6 +57,23 @@ ShellRoot {
     compare(called,false);verify(editor.confirmAction!==null)
     editor.confirmAction();editor.confirmAction=null;compare(called,true);compare(editor.draft,null)
     editor.load("test");editor.changeWidget("label","Saved");editor.save();compare(editor.dirty,false)
+  }
+  function test_brightnessDraftAndPercent() {
+    backend.snapshot = Object.assign({},backend.snapshot,{settings:{brightness:128}})
+    var field=editor.brightnessEditor
+    compare(field.text,"50")
+    field.text="7";field.textEdited()
+    backend.snapshot=Object.assign({},backend.snapshot,{settings:{brightness:200},data:{cpu:15}})
+    compare(field.text,"7")
+    field.text="75";field.textEdited();field.editingFinished()
+    compare(backend.lastRequest.method,"settings.save")
+    compare(backend.lastRequest.params.settings.brightness,191)
+    field.text="0";field.textEdited();field.editingFinished()
+    compare(backend.lastRequest.params.settings.brightness,0)
+    backend.snapshot=Object.assign({},backend.snapshot,{settings:{brightness:0}})
+    compare(field.text,"0")
+    field.text="101";field.textEdited();verify(!field.acceptableInput)
+    field.editing=false
   }
   function test_dropdownChangesWidgetType() {
     var dropdown=editor.widgetTypeSelector

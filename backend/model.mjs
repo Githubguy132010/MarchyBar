@@ -134,7 +134,7 @@ export function validateSettings(input, presets) {
   if (s.pinnedPreset !== null && !known.has(s.pinnedPreset)) e.push('Pinned preset does not exist');
   if (typeof s.hardwareEnabled !== 'boolean') e.push('Hardware enabled must be true or false');
   if (typeof s.automatic !== 'boolean') e.push('Automatic must be true or false');
-  if (!finite(s.brightness, 1, 255)) e.push('Touch Bar brightness must be 1–255');
+  if (!finite(s.brightness, 0, 255)) e.push('Touch Bar brightness must be 0–255');
   if (!finite(s.dimAfter, 0, 3600) || !finite(s.offAfter, 0, 7200) || (s.offAfter && s.offAfter < s.dimAfter)) e.push('Off timeout must follow the dim timeout (0 disables)');
   if (![2008, 2170].includes(s.previewWidth) || s.previewHeight !== 60) e.push('Choose a supported preview geometry');
   if (e.length) throw new ValidationError(e);

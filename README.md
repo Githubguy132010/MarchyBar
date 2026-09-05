@@ -52,6 +52,8 @@ The renderer and all user actions run as your desktop user. The helper authentic
 
 Select a preset to edit it. Changes stay in a draft until **Save**. **Apply** pins the saved preset; **Automatic** resumes app matching. Rules are evaluated from top to bottom, then the default preset is used. Editing the layout preserves the last app context so opening the editor doesn't change the layout under your cursor.
 
+Device brightness is shown as 0–100%; 0% turns the light off. Numeric settings are saved on Enter or when leaving the field, and live updates do not overwrite an edit.
+
 Choose a page and click a widget in the preview or list. Drag across the preview to reorder, or use the arrow buttons. Width is a relative share of the space remaining after minimum touch-target widths. A page that cannot fit either supported geometry is rejected before saving. Put additional controls on another page.
 
 **Try 20s** temporarily applies a draft and rolls back automatically. It never saves the draft. **Revert** ends the trial immediately. Closing with unsaved changes asks whether to discard them. **Reload** recovers from a stale-edit warning; **Reset** restores a bundled preset or deletes a custom one.
