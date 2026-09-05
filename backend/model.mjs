@@ -9,7 +9,7 @@ export const DEFAULT_THEME = {
 };
 export const DEFAULT_SETTINGS = {
   schemaVersion: 1, defaultPreset: 'everyday', pinnedPreset: null, automatic: true,
-  brightness: 128, dimAfter: 30, offAfter: 60, previewWidth: 2170, previewHeight: 60,
+  hardwareEnabled: false, brightness: 128, dimAfter: 30, offAfter: 60, previewWidth: 2170, previewHeight: 60,
 };
 export const DEFAULT_RULES = [
   { id: 'browser', name: 'Web browsers', enabled: true, app: '*chrom*|*firefox*|*brave*|*zen*', title: '', preset: 'browser' },
@@ -69,7 +69,7 @@ export function validatePreset(preset) {
       if (w.label !== undefined && !text(w.label, 80)) e.push(`${wp}.label: maximum 80 characters`);
       if (w.icon !== undefined && !text(w.icon, 8)) e.push(`${wp}.icon: maximum 8 characters`);
       if (w.type === 'button') e.push(...validateAction(w.action, `${wp}.action`));
-      if (w.holdAction) e.push(...validateAction(w.holdAction, `${wp}.holdAction`));
+      if (w.holdAction) { if (w.type !== 'button') e.push(`${wp}.holdAction: hold actions belong to buttons`); e.push(...validateAction(w.holdAction, `${wp}.holdAction`)); }
       if (w.type === 'slider' && !CHANNELS.includes(w.channel)) e.push(`${wp}.channel: unsupported slider`);
     }
   }
@@ -132,6 +132,7 @@ export function validateSettings(input, presets) {
   const s = { ...DEFAULT_SETTINGS, ...input }, known = new Set(presets.map(p => p.id)), e = [];
   if (!known.has(s.defaultPreset)) e.push('Default preset does not exist');
   if (s.pinnedPreset !== null && !known.has(s.pinnedPreset)) e.push('Pinned preset does not exist');
+  if (typeof s.hardwareEnabled !== 'boolean') e.push('Hardware enabled must be true or false');
   if (typeof s.automatic !== 'boolean') e.push('Automatic must be true or false');
   if (!finite(s.brightness, 1, 255)) e.push('Touch Bar brightness must be 1–255');
   if (!finite(s.dimAfter, 0, 3600) || !finite(s.offAfter, 0, 7200) || (s.offAfter && s.offAfter < s.dimAfter)) e.push('Off timeout must follow the dim timeout (0 disables)');

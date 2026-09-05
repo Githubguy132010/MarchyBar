@@ -57,6 +57,7 @@ Napi::Value KeyboardReader::Start(const Napi::CallbackInfo& info) {
     Napi::TypeError::New(env, "start(callback) expects a function").ThrowAsJavaScriptException();
     return env.Undefined();
   }
+  if (running_ || fd_ < 0) { Napi::Error::New(env, "Keyboard reader is already running or closed").ThrowAsJavaScriptException(); return env.Undefined(); }
   tsfn_ = Napi::ThreadSafeFunction::New(
     env, info[0].As<Napi::Function>(), "KeyboardReader", 0, 1);
   running_ = true;

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { Store, atomicWrite } from './store.mjs';
 import { PROTOCOL_VERSION, TYPES, CHANNELS, validatePreset, selectPreset, DEFAULT_THEME, clamp } from './model.mjs';
 import { scene, normalizeTheme, Gesture } from './scene.mjs';
-import { LiveData, Actions } from './live.mjs';
+import { LiveData, Actions, run } from './live.mjs';
 import { Device, Preview, diagnose } from './hardware.mjs';
 
 export const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -51,6 +51,7 @@ export class MarchyBar {
   broadcast(message) { for (const c of this.clients) this.send(c, message); }
   broadcastState() { this.broadcast({ event: 'state', state: this.snapshot() }); }
   refresh() {
+    if (this.stopping) return;
     if (this.gesture.capture && !this.locked) { this.draw(); return; }
     const a = this.active;
     if (this.currentPreset !== a.id) { this.manualPage = null; this.currentPreset = a.id; }
@@ -85,7 +86,7 @@ export class MarchyBar {
     }, 75);
   }
   renderPreview(preset, page, width) {
-    const p = validatePreset(preset), geometry = { width: width || this.geometry.width, height: 60 };
+    const p = this.locked ? this.store.bundled.find(p => p.id === 'classic') : validatePreset(preset), geometry = { width: width || this.geometry.width, height: 60 };
     const s = scene(p, page || p.defaultPage, geometry, this.data(), this.theme);
     if (this.previewDisplay.geometry.width !== geometry.width) { this.previewDisplay.close(); this.previewDisplay = new Preview(geometry.width, 60); }
     this.previewDraft = { preset: p, page: s.page, geometry };
@@ -104,8 +105,14 @@ export class MarchyBar {
     this.gesture.input(phase, x, y, this.currentScene?.targets || [], this.sceneRevision, this.locked);
   }
   async enableHardware() {
+    if (this.enabling) return this.enabling;
+    this.enabling = this.openHardware();
+    try { return await this.enabling; } finally { this.enabling = null; }
+  }
+  async openHardware() {
     if (this.previewOnly) throw new Error('This instance is in preview-only mode');
     if (this.device) return;
+    if (this.locked) { this.store.saveSettings({ hardwareEnabled: true }, this.store.revision); this.status = 'locked'; this.refresh(); return; }
     this.hardware = diagnose();
     if (!this.hardware.supported) throw new Error('This model is outside the Intel T2 MacBook Pro support target. Preview is available.');
     if (!this.hardware.broker) throw new Error('Run MarchyBar setup to install the device helper');
@@ -120,6 +127,7 @@ export class MarchyBar {
     } catch (e) { this.status = this.store.settings.hardwareEnabled ? 'recovering' : 'error'; this.retryAt = Date.now() + 10000; this.fail(e.message); throw e; }
   }
   async disableHardware(persist = true) {
+    if (this.enabling) { try { await this.enabling; } catch {} }
     this.gesture.cancel(); this.fn = false;
     const d = this.device; this.device = null;
     if (d) await d.close();
@@ -133,6 +141,7 @@ export class MarchyBar {
     if (final) this.store.saveSettings({ brightness }, this.store.revision); this.refresh();
   }
   async setIdle(dimmed, off) {
+    off = off || this.live.data.lidClosed === true;
     if (this.dimmed === dimmed && this.off === off) return;
     this.dimmed = dimmed; this.off = off;
     if (this.device) {
@@ -146,6 +155,23 @@ export class MarchyBar {
     switch (msg.method) {
       case 'hello': if (params.protocolVersion !== PROTOCOL_VERSION) throw new Error('Incompatible MarchyBar protocol version'); return this.snapshot();
       case 'get': return this.snapshot();
+      case 'editor.present': {
+        const windows = JSON.parse(await run('hyprctl', ['clients', '-j']));
+        const w = windows.find(w => w.title === 'MarchyBar' && w.class === 'org.quickshell');
+        if (!w || !/^0x[0-9a-f]+$/i.test(w.address)) return false;
+        const monitors = JSON.parse(await run('hyprctl', ['monitors', '-j']));
+        const m = monitors.find(m => m.id === w.monitor) || monitors.find(m => m.focused);
+        if (!m) return false;
+        const mw = m.width / m.scale, mh = m.height / m.scale;
+        const width = Math.round(Math.min(1180, mw - 48)), height = Math.round(Math.min(800, mh - 80));
+        const selector = `address:${w.address}`;
+        for (const command of [
+          `hl.dsp.window.float({ action = "set", window = "${selector}" })`,
+          `hl.dsp.window.resize({ x = ${width}, y = ${height}, relative = false, window = "${selector}" })`,
+          `hl.dsp.window.move({ x = ${Math.round(m.x + (mw-width)/2)}, y = ${Math.round(m.y + (mh-height)/2)}, relative = false, window = "${selector}" })`,
+        ]) await run('hyprctl', ['dispatch', command]);
+        return true;
+      }
       case 'preset.save': { this.validateFit(params.preset); const p = this.store.save(params.preset, revision); this.previewDraft = null; this.refresh(); return p; }
       case 'preset.create': { const p = this.store.create(params.name || 'Untitled preset', params.from, revision); this.refresh(); return p; }
       case 'preset.delete': this.store.delete(params.id, params.replacement, revision); this.refresh(); return true;
@@ -178,7 +204,12 @@ export class MarchyBar {
       case 'theme': this.theme = normalizeTheme(params); this.lastFrame = null; this.refresh(); if (this.previewDraft) this.renderPreview(this.previewDraft.preset, this.previewDraft.page, this.previewDraft.geometry.width); return true;
       case 'heartbeat': {
         this.lastHeartbeat = Date.now(); const locked = params.locked !== false;
-        if (locked !== this.locked) { this.locked = locked; this.gesture.cancel(); this.revertTrial(); this.previewDraft = null; this.lastFrame = null; this.refresh(); }
+        if (locked !== this.locked) {
+          this.locked = locked; this.gesture.cancel(); this.revertTrial(); this.previewDraft = null; this.lastFrame = null;
+          if (locked && this.device) { await this.disableHardware(false); this.status = 'locked'; }
+          else if (!locked && this.store.settings.hardwareEnabled && !this.previewOnly) await this.enableHardware();
+          this.refresh();
+        }
         this.live.editorFocused = params.editorOpen === true;
         if (typeof params.dimmed === 'boolean' && typeof params.off === 'boolean') this.setIdle(params.dimmed, params.off);
         return true;
@@ -231,9 +262,9 @@ export class MarchyBar {
     if (this.liveEnabled) this.live.start();
     this.refresh();
     this.safetyTimer = setInterval(() => {
-      if (!this.previewOnly && Date.now() - this.lastHeartbeat > 7000 && !this.locked) { this.locked = true; this.gesture.cancel(); this.refresh(); }
+      if (!this.previewOnly && Date.now() - this.lastHeartbeat > 7000 && !this.locked) { this.locked = true; this.gesture.cancel(); this.previewDraft = null; this.disableHardware(false).then(() => { this.status = 'locked'; this.refresh(); }); }
       if (this.device) this.device.request('ping').catch(e => this.fail(e.message));
-      else if (this.store.settings.hardwareEnabled && !this.previewOnly && this.status === 'recovering' && Date.now() > (this.retryAt || 0) && !this.suspended) this.enableHardware().catch(() => {});
+      else if (this.store.settings.hardwareEnabled && !this.previewOnly && this.status === 'recovering' && Date.now() > (this.retryAt || 0) && !this.suspended && !this.locked) this.enableHardware().catch(() => {});
     }, 5000);
     if (this.store.settings.hardwareEnabled && !this.previewOnly) this.enableHardware().catch(() => {});
     return this;

@@ -12,7 +12,7 @@ DrmDevice::DrmDevice(const std::string& path) {
   fd_ = open(path.c_str(), O_RDWR | O_CLOEXEC);
   if (fd_ < 0)
     throw std::runtime_error("Cannot open DRM device " + path +
-                             " — are you in the 'video' group or running as root?");
+                             " — the device lease could not grant access");
 }
 
 DrmDevice::~DrmDevice() {

@@ -88,3 +88,22 @@ test('locked scene rejects custom actions and cancelled touches never fire', () 
   g.input('start', 20, 20, [target], 1, true); g.input('end', 20, 20, [target], 1, true); assert.equal(actions.length, 0);
   g.input('start', 20, 20, [target], 1); g.input('cancel', 20, 20, [], 1); g.input('end', 20, 20, [target], 1); assert.equal(actions.length, 0);
 });
+
+test('preset links survive duplication/import and are redirected before deleting their target', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marchybar-links-'));
+  try {
+    const store = new Store({root,configDir:path.join(dir,'config'),stateDir:path.join(dir,'state')});
+    const target = store.create('Target',null,store.revision);
+    const p = store.create('Linked',null,store.revision);
+    p.pages[0].widgets=[{id:'link',type:'button',label:'Go',weight:1,action:{type:'preset',preset:target.id}}];
+    store.save(p,store.revision);
+    assert.throws(()=>store.delete(target.id,null,store.revision),/replacement/);
+    store.delete(target.id,'everyday',store.revision);
+    assert.equal(store.get(p.id).pages[0].widgets[0].action.preset,'everyday');
+    p.pages[0].widgets[0].action.preset=p.id;store.save(p,store.revision);
+    const duplicate=store.create('Copy',p.id,store.revision);
+    assert.equal(duplicate.pages[0].widgets[0].action.preset,duplicate.id);
+    const imported=store.import(p,store.revision);
+    assert.equal(imported.pages[0].widgets[0].action.preset,imported.id);
+  } finally {fs.rmSync(dir,{recursive:true,force:true})}
+});
