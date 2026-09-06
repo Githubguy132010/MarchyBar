@@ -35,7 +35,9 @@ export function validateAction(a, path = 'action') {
     case 'media': return ['play-pause', 'next', 'previous', 'stop'].includes(a.command) ? [] : [`${path}: invalid media command`];
     case 'workspace': return Number.isInteger(a.workspace) && a.workspace >= 1 && a.workspace <= 99 ? [] : [`${path}: workspace must be 1–99`];
     case 'launch': return text(a.desktop, 200) && /^[A-Za-z0-9._-]+\.desktop$/.test(a.desktop) ? [] : [`${path}: choose a .desktop application ID`];
-    case 'command': return Array.isArray(a.argv) && a.argv.length > 0 && a.argv.length <= 32 && a.argv.every(v => text(v, 2048)) && a.argv[0].length > 0 ? [] : [`${path}: command must be a nonempty argument array`];
+    case 'command':
+      if (a.detached !== undefined && typeof a.detached !== 'boolean') return [`${path}: detached must be a boolean`];
+      return Array.isArray(a.argv) && a.argv.length > 0 && a.argv.length <= 32 && a.argv.every(v => text(v, 2048)) && a.argv[0].length > 0 ? [] : [`${path}: command must be a nonempty argument array`];
     case 'preset': return validId(a.preset) ? [] : [`${path}: invalid preset ID`];
     case 'page': return validId(a.page) ? [] : [`${path}: invalid page ID`];
     default: return [`${path}: unsupported action type`];

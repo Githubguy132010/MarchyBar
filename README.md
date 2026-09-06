@@ -62,6 +62,10 @@ Choose a page and click a widget in the preview or list. Drag across the preview
 
 A button can send a key chord, control media, select a workspace/page/preset, launch a desktop app, or run an argument array. Commands execute directly without a shell. To intentionally use a shell, explicitly choose an argument array such as `["bash", "-lc", "your command"]`. Imported actions only run when activated; review actions from other people before using them.
 
+For commands that open applications, select **Run independently** (`"detached": true`). MarchyBar starts the process without capturing output or waiting for it to exit; only process-start errors are reported. Other commands retain a 30-second timeout. The bundled Terminal button runs independently.
+
+The Developer preset's Find and Save buttons send `Ctrl+F` and `Ctrl+S` to the focused application. These are editor shortcuts, not terminal search or save commands. At a Bash prompt, `Ctrl+F` moves forward one character and `Ctrl+S` may pause output; `Ctrl+Q` resumes it. Their behavior inside a terminal application depends on that application's bindings.
+
 A right click on the bar icon resumes Automatic mode. The Touch Bar's rightmost menu button opens the editor. Esc remains at the left on models without a physical Escape key.
 
 ## Command line

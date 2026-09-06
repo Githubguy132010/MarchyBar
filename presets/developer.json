@@ -49,6 +49,7 @@
           "label": "Terminal",
           "action": {
             "type": "command",
+            "detached": true,
             "argv": [
               "omarchy",
               "launch",
