@@ -192,7 +192,7 @@ Item {
     }, rulesRevision)
   }
   function defaultAction(type) {
-    return ({key:{type:"key",key:"Return",modifiers:[]},media:{type:"media",command:"play-pause"},workspace:{type:"workspace",workspace:1},launch:{type:"launch",desktop:"org.gnome.Nautilus.desktop"},command:{type:"command",argv:["omarchy","launch","terminal"]},preset:{type:"preset",preset:"everyday"},page:{type:"page",page:draft.defaultPage}})[type]
+    return ({key:{type:"key",key:"Return",modifiers:[]},media:{type:"media",command:"play-pause"},workspace:{type:"workspace",workspace:1},launch:{type:"launch",desktop:"org.gnome.Nautilus.desktop"},command:{type:"command",argv:["omarchy","launch","terminal"],detached:true},preset:{type:"preset",preset:"everyday"},page:{type:"page",page:draft.defaultPage}})[type]
   }
   function actionField(key,value) { var a=copy(widget.action); a[key]=value; changeWidget("action",a) }
   function localPath(url) { return decodeURIComponent(String(url).replace(/^file:\/\//,"")) }
@@ -397,6 +397,7 @@ Item {
                     DraftField { Layout.fillWidth:true; visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="workspace"); text:root.widget && root.widget.action?String(root.widget.action.workspace||1):"1"; validator:IntValidator {bottom:1;top:99} applyValue:value=>root.actionField("workspace",Number.fromLocaleString(Qt.locale(validator.locale),value)) }
                     Ui.TextField { Layout.fillWidth:true; visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="launch"); text:root.widget && root.widget.action?root.widget.action.desktop || "":""; placeholderText:"Application desktop ID"; onTextEdited:root.actionField("desktop",text) }
                     DraftField { Layout.fillWidth:true; visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="command"); text:root.widget && root.widget.action?JSON.stringify(root.widget.action.argv || []):"[]"; placeholderText:'["program", "argument"]'; applyValue:value=>{var argv=JSON.parse(value);if(!Array.isArray(argv)||!argv.length||argv.some(a=>typeof a!=="string"))throw new Error("Use a JSON array of command arguments");root.actionField("argv",argv)} }
+                    Button { visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="command"); text:"Run independently"; selected:Boolean(root.widget && root.widget.action && root.widget.action.detached); tooltipText:"For applications that stay open. Do not wait for exit or capture output."; onClicked:root.actionField("detached",!root.widget.action.detached) }
                     Dropdown { visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="preset"); Layout.fillWidth:true; options:root.presetOptions; modelValue:root.widget && root.widget.action?root.widget.action.preset || "everyday":"everyday"; onChanged:value=>root.actionField("preset",value) }
                     Dropdown { visible:Boolean(root.widget && root.widget.action && root.widget.action.type==="page"); Layout.fillWidth:true; options:root.pageOptions; modelValue:root.widget && root.widget.action?root.widget.action.page || "":""; onChanged:value=>root.actionField("page",value) }
                   }

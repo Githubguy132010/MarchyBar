@@ -163,7 +163,15 @@ export class Actions {
           if (!file) throw new Error('Application is not installed');
           await run('gio', ['launch', file]); break;
         }
-        case 'command': await run(action.argv[0], action.argv.slice(1), { timeout: 30000 }); break;
+        case 'command':
+          if (action.detached) {
+            await new Promise((resolve, reject) => {
+              const child = spawn(action.argv[0], action.argv.slice(1), { detached: true, stdio: 'ignore' });
+              child.once('error', reject);
+              child.once('spawn', () => { child.unref(); resolve(); });
+            });
+          } else await run(action.argv[0], action.argv.slice(1), { timeout: 30000 });
+          break;
       }
     } catch (e) { this.onError(e.message); }
   }

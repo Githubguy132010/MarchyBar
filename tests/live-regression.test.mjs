@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -6,11 +6,16 @@ import path from 'node:path';
 import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { promisify } from 'node:util';
+import { EventEmitter } from 'node:events';
 import { DEFAULT_RULES, DEFAULT_SETTINGS, selectPreset, validateAction } from '../backend/model.mjs';
 
 // Install the subprocess fence before live.mjs captures promisified execFile.
 let execute = () => { throw new Error('Unexpected subprocess'); };
 const original = cp.execFile;
+const originalSpawn = cp.spawn;
+let launch = () => { throw new Error('Unexpected spawn'); };
+cp.spawn = (...args) => launch(...args);
+after(() => { cp.spawn = originalSpawn; syncBuiltinESMExports(); });
 function fake() { throw new Error('Real subprocesses forbidden'); }
 fake[promisify.custom] = (...args) => execute(...args);
 cp.execFile = fake;
@@ -19,16 +24,25 @@ const { Actions, LiveData } = await import('../backend/live.mjs');
 cp.execFile = original;
 syncBuiltinESMExports();
 
-test('bundled Terminal button launches directly without injecting a compositor shortcut', async () => {
+test('bundled Terminal button detaches without waiting for exit or injecting a shortcut', { timeout: 1000 }, async () => {
   const preset = JSON.parse(fs.readFileSync(new URL('../presets/developer.json', import.meta.url), 'utf8'));
   const action = preset.pages.find(page => page.id === 'main').widgets.find(widget => widget.id === 'terminal').action;
   assert.deepEqual(validateAction(action), []);
   const calls = [], errors = [];
-  execute = async (file, args) => { calls.push([file, args]); return { stdout: '' }; };
+  execute = () => { throw new Error('Terminal must not use a timed command'); };
+  let unreferenced = false;
+  launch = (file, args, options) => {
+    calls.push([file, args, options]);
+    const child = new EventEmitter();
+    child.unref = () => { unreferenced = true; };
+    queueMicrotask(() => child.emit('spawn'));
+    return child;
+  };
   let locked = false, preview = false;
   const actions = new Actions({ live: { data: {} }, isLocked: () => locked, isPreview: () => preview, onError: e => errors.push(e) });
   await actions.invoke(action);
-  assert.deepEqual(calls, [['omarchy', ['launch', 'terminal']]]);
+  assert.deepEqual(calls, [['omarchy', ['launch', 'terminal'], { detached: true, stdio: 'ignore' }]]);
+  assert.equal(unreferenced, true);
   preview = true;
   await actions.invoke(action);
   preview = false;
@@ -36,6 +50,35 @@ test('bundled Terminal button launches directly without injecting a compositor s
   await actions.invoke(action);
   assert.equal(calls.length, 1);
   assert.deepEqual(errors, []);
+});
+
+test('detached commands report startup errors and reject invalid detached flags', async () => {
+  const errors = [];
+  launch = () => {
+    const child = new EventEmitter();
+    queueMicrotask(() => child.emit('error', new Error('spawn missing ENOENT')));
+    return child;
+  };
+  const actions = new Actions({ isLocked: () => false, isPreview: () => false, onError: e => errors.push(e) });
+  await actions.invoke({ type: 'command', argv: ['missing'], detached: true });
+  assert.deepEqual(errors, ['spawn missing ENOENT']);
+  assert.match(validateAction({ type: 'command', argv: ['missing'], detached: 'true' })[0], /detached must be a boolean/);
+});
+
+test('ordinary commands retain their timeout and error reporting', async () => {
+  const calls = [], errors = [];
+  execute = async (...args) => { calls.push(args); throw new Error('command failed'); };
+  const actions = new Actions({ isLocked: () => false, isPreview: () => false, onError: e => errors.push(e) });
+  for (const detached of [undefined, false]) {
+    const action = { type: 'command', argv: ['fixture', 'arg'], detached };
+    assert.deepEqual(validateAction(action), []);
+    await actions.invoke(action);
+  }
+  assert.equal(calls.length, 2);
+  for (const [file, args, options] of calls) {
+    assert.equal(file, 'fixture'); assert.deepEqual(args, ['arg']); assert.equal(options.timeout, 30000);
+  }
+  assert.deepEqual(errors, ['command failed', 'command failed']);
 });
 
 test('desktop IDs resolve direct and nested entries with XDG precedence', async t => {
