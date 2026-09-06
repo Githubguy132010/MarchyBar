@@ -69,6 +69,7 @@ Item {
   }
   function close() {
     guard(function() {
+      presentTimer.stop()
       root.opened = false; window.visible = false
       if (root.service) { root.service.editorOpen = false; root.service.heartbeat() }
       root.call("preview.close", {})

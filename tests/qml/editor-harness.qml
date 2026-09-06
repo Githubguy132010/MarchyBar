@@ -8,6 +8,7 @@ ShellRoot {
     id: backend
     property var snapshot: ({presets:[testCase.fixture],rules:[],settings:{},data:{},hardware:{},revision:"r1",widgetTypes:["button","slider","clock"],channels:["volume"]})
     property var lastRequest: null
+    property int presentations: 0
     property bool editorOpen: false
     property string error: ""
     property string previewPath: ""
@@ -15,24 +16,63 @@ ShellRoot {
     function heartbeat() {}
     function request(method, params, callback, revision) {
       lastRequest = {method:method,params:params}
+      if(method==="editor.present") presentations++
       if(method==="preview" && callback) callback(true,{boxes:[],geometry:{width:2170,height:60}})
       if(method==="preset.save" && callback) callback(true,params.preset)
     }
   }
   Editor { id: editor; service:backend }
+  Service { id: service; shell:host; editorOpen:backend.editorOpen }
+  QtObject {
+    id: host
+    function firstPartyServiceFor(id) { return null }
+    function summon(id, payload) { testCase.compare(id,"marchybar.touchbar"); editor.open(payload) }
+    function hide(id) { testCase.compare(id,"marchybar.touchbar"); editor.close() }
+  }
   function compare(a,b) { if(a!==b) throw new Error("Expected " + JSON.stringify(b) + ", got " + JSON.stringify(a)) }
   function verify(value) { if(!value) throw new Error("Assertion failed") }
   Timer {
     interval:150;running:true
     onTriggered: {
       try {
-        for(var name of ["test_draftIsolationAndUndo","test_addAndMoveWidget","test_discardGuardAndSave","test_dropdownChangesWidgetType","test_brightnessDraftAndPercent"]) { testCase.init();testCase[name]();console.log("MARCHYBAR_QML_PASS",name) }
+        for(var name of ["test_draftIsolationAndUndo","test_addAndMoveWidget","test_discardGuardAndSave","test_dropdownChangesWidgetType","test_brightnessDraftAndPercent","test_hamburgerToggle","test_hamburgerDiscardGuard"]) { testCase.init();testCase[name]();console.log("MARCHYBAR_QML_PASS",name) }
+        closeCheck.start()
+      } catch(e) { console.error("MARCHYBAR_QML_FAILED",e.stack || String(e)); Qt.quit() }
+    }
+  }
+  Timer {
+    id: closeCheck
+    interval:300
+    onTriggered: {
+      try {
+        testCase.compare(backend.presentations,0)
+        console.log("MARCHYBAR_QML_PASS","test_noPresentationAfterRapidClose")
         console.log("MARCHYBAR_QML_ALL_PASSED")
       } catch(e) { console.error("MARCHYBAR_QML_FAILED",e.stack || String(e)) }
       Qt.quit()
     }
   }
   function init() { editor.draft=null;editor.savedDraft="";editor.load("test") }
+  function tapHamburger() { service.receive(JSON.stringify({event:"openEditor"})); compare(service.error,"") }
+  function test_hamburgerToggle() {
+    tapHamburger();compare(editor.opened,true);compare(backend.editorOpen,true)
+    tapHamburger();compare(editor.opened,false);compare(backend.editorOpen,false)
+    compare(backend.lastRequest.method,"preview.close")
+    tapHamburger();compare(editor.opened,true);compare(backend.editorOpen,true)
+    tapHamburger();compare(editor.opened,false);compare(backend.editorOpen,false)
+  }
+  function test_hamburgerDiscardGuard() {
+    tapHamburger()
+    editor.changeWidget("label","Unsaved")
+    tapHamburger();verify(editor.confirmAction!==null)
+    compare(editor.opened,true);compare(backend.editorOpen,true)
+    editor.confirmAction=null
+    compare(editor.dirty,true);compare(editor.opened,true)
+    tapHamburger();verify(editor.confirmAction!==null)
+    editor.confirmAction();editor.confirmAction=null
+    compare(editor.opened,false);compare(backend.editorOpen,false)
+    compare(editor.draft,null);compare(backend.lastRequest.method,"preview.close")
+  }
   function test_draftIsolationAndUndo() {
     compare(editor.dirty,false)
     editor.widgetIndex=0

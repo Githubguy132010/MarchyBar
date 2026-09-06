@@ -50,7 +50,10 @@ Item {
       var msg = JSON.parse(data)
       if (msg.event === "state") { snapshot = msg.state; frame = snapshot.frame; previewPath = snapshot.previewPath || "" }
       else if (msg.event === "frame") { frame = msg.frame; previewPath = msg.previewPath; frameReady() }
-      else if (msg.event === "openEditor" && shell) shell.summon("marchybar.touchbar", "{}")
+      else if (msg.event === "openEditor" && shell) {
+        if (editorOpen) shell.hide("marchybar.touchbar")
+        else shell.summon("marchybar.touchbar", "{}")
+      }
       else if (msg.id !== undefined) {
         var entry = pending[msg.id] || {}; var callback = entry.callback
         var quiet = ["heartbeat","theme","preview","hello","get","editor.present"].includes(entry.method)

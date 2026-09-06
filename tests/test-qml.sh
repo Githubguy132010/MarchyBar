@@ -3,7 +3,7 @@ set -euo pipefail
 MARCHYBAR_TEST_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 MARCHYBAR_TEST_DIR=$(mktemp -d /tmp/marchybar-qml.XXXXXX)
 trap 'rm -rf "$MARCHYBAR_TEST_DIR"' EXIT
-cp "$MARCHYBAR_TEST_ROOT/Editor.qml" "$MARCHYBAR_TEST_ROOT/SettingNumber.qml" "$MARCHYBAR_TEST_DIR/"
+cp "$MARCHYBAR_TEST_ROOT/Editor.qml" "$MARCHYBAR_TEST_ROOT/SettingNumber.qml" "$MARCHYBAR_TEST_ROOT/Service.qml" "$MARCHYBAR_TEST_DIR/"
 cp "$MARCHYBAR_TEST_ROOT/tests/qml/editor-harness.qml" "$MARCHYBAR_TEST_DIR/shell.qml"
 ln -s "${OMARCHY_PATH:-/usr/share/omarchy}/shell/Commons" "$MARCHYBAR_TEST_DIR/Commons"
 ln -s "${OMARCHY_PATH:-/usr/share/omarchy}/shell/Ui" "$MARCHYBAR_TEST_DIR/Ui"
