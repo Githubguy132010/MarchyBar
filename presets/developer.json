@@ -48,10 +48,11 @@
           "weight": 1,
           "label": "Terminal",
           "action": {
-            "type": "key",
-            "key": "Return",
-            "modifiers": [
-              "logo"
+            "type": "command",
+            "argv": [
+              "omarchy",
+              "launch",
+              "terminal"
             ]
           }
         },
