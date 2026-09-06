@@ -78,6 +78,8 @@ marchybar enable
 marchybar export everyday ~/everyday.json
 marchybar import ~/everyday.json
 marchybar diagnostics
+marchybar update
+marchybar update --with-omarchy
 ```
 
 ## Files and updates
@@ -95,7 +97,11 @@ $XDG_RUNTIME_DIR/marchybar/control.sock
 
 Bundled presets are immutable package files; editing one creates a user override. Restoring removes that override. Preset files are written atomically. Invalid files remain on disk and are reported rather than silently overwritten. Changes made externally take effect when the backend restarts.
 
-Use Omarchy's plugin update command for repository updates. If a release changes the device helper, run **Set up Touch Bar** again. The source, preset, and control protocol versions are explicit. On Omarchy 4.0.2 a shell restart may be needed after QML source updates because the live plugin loader can retain cached components.
+Use **Device → Update MarchyBar** or `marchybar update` for repository updates. **Update with Omarchy** or `marchybar update --with-omarchy` updates and reloads MarchyBar, then runs the standard Omarchy system updater. This order finishes the plugin update before Omarchy can offer a reboot. Both use Omarchy's existing update commands and confirmations. The editor launches an independent terminal so shell restarts do not interrupt the workflow. Save any drafts before updating. The editor closes when you start; wait for updates to finish before editing again.
+
+When the plugin revision changes, MarchyBar restarts the shell to load the new code. An enabled Touch Bar returns after the session unlocks; an intentionally disabled bar stays disabled. If the shell cannot restart, the updater reports the pending restart and the command to run after unlocking. A failed plugin update or restart stops the combined workflow. Omarchy may restart the shell again or offer a reboot. Updates run directly through `omarchy plugin update` still need a shell restart to replace MarchyBar's retained service.
+
+If a release changes the device helper, run **Set up Touch Bar** again. Updates never install privileged helper files automatically. The source, preset, and control protocol versions are explicit.
 
 ## Disable or uninstall
 

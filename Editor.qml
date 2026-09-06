@@ -114,6 +114,13 @@ Item {
     if (dirty || rulesDirty) confirm("Discard unsaved changes?", "Your saved presets and app rules will stay as they are.", function() { root.clearFields(); root.draftGeneration++; root.draft = null; root.savedDraft = ""; root.loadRules(); action() })
     else action()
   }
+  function updateSystem(withOmarchy) {
+    guard(function() {
+      root.confirm("Update " + (withOmarchy ? "MarchyBar and Omarchy?" : "MarchyBar?"),
+        "Updates run in a terminal and may restart the shell, closing this editor. Saved presets and the Touch Bar enabled setting are preserved.",
+        function() { root.close(); root.service.updateSystem(withOmarchy) })
+    })
+  }
   function confirm(title, text, action) { if (!modalActive) previousFocus = window.contentItem.Window.window ? window.contentItem.Window.window.activeFocusItem : null; confirmTitle = title; confirmText = text; confirmAction = action }
   function prompt(title, value, action) { if (!modalActive) previousFocus = window.contentItem.Window.window ? window.contentItem.Window.window.activeFocusItem : null; promptTitle = title; promptValue = value; promptAction = action; promptVisible = true; Qt.callLater(() => promptField.forceActiveFocus()) }
   function clearFields() { for (var field of pendingFields.slice()) field.clearEdit() }
@@ -477,6 +484,13 @@ Item {
             RowLayout { Hint { text:"Turn off after seconds (0 = never)"; Layout.preferredWidth:300 } SettingNumber { objectName:"offAfter"; Layout.preferredWidth:120; savedValue:root.model.settings.offAfter ?? 0; maximum:7200; onCommitted:(value,complete)=>root.call("settings.save",{settings:{offAfter:value}},complete) } }
             Hint { text:"Preview supports both T2 Touch Bar widths. MarchyBar discovers the real panel size and touch coordinates when enabled. The original firmware controls return when the desktop locks."; Layout.fillWidth:true }
             Label { id:diagnostic; Layout.fillWidth:true; text:""; font.pixelSize:Style.font.bodySmall }
+            Line {}
+            Label { text:"Updates"; font.bold:true; font.pixelSize:Style.font.heading }
+            Hint { text:"Update MarchyBar on its own, or update Omarchy too. The editor closes during updates. The Touch Bar returns automatically if enabled. Device helper changes still require Set up Touch Bar."; Layout.fillWidth:true }
+            RowLayout {
+              Button { text:"Update MarchyBar"; bordered:true; enabled:Boolean(root.service); onClicked:root.updateSystem(false) }
+              Button { text:"Update with Omarchy"; bordered:true; enabled:Boolean(root.service); onClicked:root.updateSystem(true) }
+            }
           }
         }
       }

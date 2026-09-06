@@ -53,6 +53,7 @@ case "$action" in
   preview) prepare; exec node "$MARCHYBAR_ROOT/backend/server.mjs" --preview "$@" ;;
   open) exec omarchy-shell shell summon marchybar.touchbar '{}' ;;
   setup) exec pkexec /bin/bash "$MARCHYBAR_ROOT/packaging/install-system.sh" ;;
+  update) exec /bin/bash "$MARCHYBAR_ROOT/bin/update.sh" "$@" ;;
   uninstall-system) exec pkexec /bin/bash "$MARCHYBAR_ROOT/packaging/install-system.sh" --remove ;;
   help|--help|-h)
     cat <<'HELP'
@@ -63,6 +64,7 @@ MarchyBar — native Omarchy Touch Bar configuration
   marchybar daemon                   Run the session backend
   marchybar preview [--socket PATH]   Run without touching hardware
   marchybar setup                    Install the privileged device helper
+  marchybar update [--with-omarchy]   Update MarchyBar, optionally Omarchy too
   marchybar status                   Show status and active preset
   marchybar list                     List presets
   marchybar apply ID                 Pin a preset

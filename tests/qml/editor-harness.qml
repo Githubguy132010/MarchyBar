@@ -12,6 +12,8 @@ ShellRoot {
     property string error: ""
     property string previewPath: ""
     property int frame: 0
+    property var updates: []
+    function updateSystem(withOmarchy) { updates = updates.concat([withOmarchy]) }
     function heartbeat() {}
     function request(method, params, callback, revision) {
       lastRequest = {method:method,params:params}
@@ -30,7 +32,7 @@ ShellRoot {
     interval:150;running:true
     onTriggered: {
       try {
-        for(var name of ["test_draftIsolationAndUndo","test_addAndMoveWidget","test_discardGuardAndSave","test_dropdownChangesWidgetType","test_brightnessDraftAndPercent"]) { testCase.init();testCase[name]();console.log("MARCHYBAR_QML_PASS",name) }
+        for(var name of ["test_draftIsolationAndUndo","test_addAndMoveWidget","test_discardGuardAndSave","test_dropdownChangesWidgetType","test_brightnessDraftAndPercent","test_updateConfirmation"]) { testCase.init();testCase[name]();console.log("MARCHYBAR_QML_PASS",name) }
         console.log("MARCHYBAR_QML_ALL_PASSED")
       } catch(e) { console.error("MARCHYBAR_QML_FAILED",e.stack || String(e)) }
       Qt.quit()
@@ -86,5 +88,25 @@ ShellRoot {
     compare(dropdown.value,"slider")
     editor.addWidget(dropdown.value)
     compare(editor.widget.type,"slider")
+  }
+  function test_updateConfirmation() {
+    editor.loadRules()
+    editor.updateSystem(false)
+    compare(backend.updates.length,0)
+    compare(editor.confirmTitle,"Update MarchyBar?")
+    editor.confirmAction=null
+    compare(backend.updates.length,0)
+    editor.updateSystem(false)
+    var action=editor.confirmAction;editor.confirmAction=null;action()
+    compare(JSON.stringify(backend.updates),"[false]")
+    editor.changeWidget("label","Unsaved")
+    editor.updateSystem(true)
+    compare(editor.confirmTitle,"Discard unsaved changes?")
+    compare(backend.updates.length,1)
+    action=editor.confirmAction;editor.confirmAction=null;action()
+    compare(editor.confirmTitle,"Update MarchyBar and Omarchy?")
+    compare(editor.dirty,false)
+    action=editor.confirmAction;editor.confirmAction=null;action()
+    compare(JSON.stringify(backend.updates),"[false,true]")
   }
 }
