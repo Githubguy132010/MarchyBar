@@ -467,10 +467,10 @@ Item {
             width:parent.width; spacing:20
             Label { text:"Touch Bar"; font.bold:true; font.pixelSize:Style.font.heading }
             Label { text:(root.model.hardware.model || "Detecting hardware")+" · "+(root.model.hardware.kernel || ""); Layout.fillWidth:true }
-            Hint { text:"The one-time device helper gives MarchyBar access only to the Touch Bar and the built-in keyboard for Fn and wake detection. Disabling restores the previous firmware mode."; Layout.fillWidth:true }
+            Hint { text:"The one-time device helper gives MarchyBar access only to the Touch Bar and the built-in keyboard for Fn and wake detection. " + (root.model.hardware.profile === "asahi" ? "Experimental Apple Silicon support, not verified on physical hardware. Requires Asahi adpdrm/adp; the helper checks Z2 input and Summit backlight. Disabling leaves the bar dark, with no firmware controls." : root.model.hardware.profile === "t2" ? "Disabling restores the previous firmware mode." : "Unrecognized models are preview-only."); Layout.fillWidth:true }
             RowLayout {
-              Button { text:"Set up Touch Bar"; bordered:true; enabled:Boolean(root.service); onClicked:root.service.setupSystem() }
-              Button { text:root.model.status==="ready"?"Disable Touch Bar":"Enable Touch Bar"; bordered:true; enabled:Boolean(root.model.hardware.broker); onClicked:root.call(root.model.status==="ready"?"hardware.disable":"hardware.enable",{}) }
+              Button { text:"Set up Touch Bar"; bordered:true; enabled:Boolean(root.service) && Boolean(root.model.hardware.supported); onClicked:root.service.setupSystem() }
+              Button { text:root.model.status==="ready"?"Disable Touch Bar":"Enable Touch Bar"; bordered:true; enabled:Boolean(root.model.hardware.broker) && Boolean(root.model.hardware.supported); onClicked:root.call(root.model.status==="ready"?"hardware.disable":"hardware.enable",{}) }
               Button { text:"Refresh diagnostics"; onClicked:root.call("diagnostics",{},(ok,d)=>{if(ok)diagnostic.text=JSON.stringify(d,null,2)}) }
             }
             Line {}
@@ -483,7 +483,7 @@ Item {
             RowLayout { Hint { text:"Touch Bar brightness (0–100%)"; Layout.preferredWidth:300 } SettingNumber { id:brightnessField; Layout.preferredWidth:120; savedValue:Math.round((root.model.settings.brightness ?? 128) / 255 * 100); minimum:0; maximum:100; onCommitted:(value,complete)=>root.call("settings.save",{settings:{brightness:Math.round(value / 100 * 255)}},complete) } }
             RowLayout { Hint { text:"Dim after seconds (0 = never)"; Layout.preferredWidth:300 } SettingNumber { objectName:"dimAfter"; Layout.preferredWidth:120; savedValue:root.model.settings.dimAfter ?? 0; maximum:3600; onCommitted:(value,complete)=>root.call("settings.save",{settings:{dimAfter:value}},complete) } }
             RowLayout { Hint { text:"Turn off after seconds (0 = never)"; Layout.preferredWidth:300 } SettingNumber { objectName:"offAfter"; Layout.preferredWidth:120; savedValue:root.model.settings.offAfter ?? 0; maximum:7200; onCommitted:(value,complete)=>root.call("settings.save",{settings:{offAfter:value}},complete) } }
-            Hint { text:"Preview supports both T2 Touch Bar widths. MarchyBar discovers the real panel size and touch coordinates when enabled. The original firmware controls return when the desktop locks."; Layout.fillWidth:true }
+            Hint { text:"Preview supports both Touch Bar widths. MarchyBar discovers the real panel size and touch coordinates when enabled. " + (root.model.hardware.profile === "asahi" ? "The bar stays dark while the desktop is locked. Apple Silicon has no firmware fallback controls." : root.model.hardware.profile === "t2" ? "The original firmware controls return when the desktop locks." : "Hardware access requires a recognized Touch Bar model."); Layout.fillWidth:true }
             Label { id:diagnostic; Layout.fillWidth:true; text:""; font.pixelSize:Style.font.bodySmall }
             Line {}
             Label { text:"Updates"; font.bold:true; font.pixelSize:Style.font.heading }

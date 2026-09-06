@@ -2,9 +2,11 @@
 
 Your Touch Bar, at home in Omarchy.
 
-MarchyBar is a native Omarchy shell plugin for Intel T2 MacBook Pro computers. It combines an editable Touch Bar with live controls, automatic app layouts, and an Omarchy-themed preset editor.
+MarchyBar is a native Omarchy shell plugin for Intel T2 MacBook Pro computers, with experimental Apple Silicon support. It combines an editable Touch Bar with live controls, automatic app layouts, and an Omarchy-themed preset editor.
 
 **Compatibility target:** latest stable Omarchy (4.0.2 at the research snapshot), with the T2 Linux kernel and `appletbdrm`. Targets MacBookPro15,1–15,4 and MacBookPro16,1–16,4. Both 2170×60 and 2008×60 logical panels are supported; the renderer discovers actual DRM geometry and input ranges. See [validation](docs/VALIDATION.md) for the distinction between tested behavior and physical model coverage.
+
+**Experimental Apple Silicon:** the 13-inch M1 MacBook Pro (2020, `MacBookPro17,1`) and 13-inch M2 MacBook Pro (2022, `Mac14,7`) running a compatible Omarchy installation with Asahi drivers. Neither model has been physically tested with MarchyBar. This does not install Omarchy or port it to ARM64, and does not support macOS. Read the [research and testing guide](docs/APPLE-SILICON.md) before enabling hardware.
 
 ![MarchyBar native preset editor](preview.png)
 
@@ -18,11 +20,13 @@ MarchyBar is a native Omarchy shell plugin for Intel T2 MacBook Pro computers. I
 - Pages, a held-Fn page, adjustable widget widths, drag reordering, keyboard-accessible move buttons, undo/redo, and stale-edit protection.
 - A preview rendered by the physical device renderer, plus a 20-second trial with automatic rollback.
 - Current Omarchy theme colors, font, control styling, and corners.
-- Temporary device access, original firmware controls while locked/disabled, and suspend coordination without unloading the T2 bridge.
+- Temporary device access and suspend coordination. T2 restores its original firmware mode while locked/disabled; Apple Silicon leaves the bar dark.
 
 ## Install
 
 Start with a working T2 Linux installation of Omarchy. MarchyBar does not replace your kernel or install Apple firmware.
+
+Apple Silicon testers should follow the [separate setup and rollback instructions](docs/APPLE-SILICON.md#test-setup), not the T2 kernel instructions below.
 
 Install dependencies from Arch repositories:
 
@@ -95,7 +99,7 @@ User presets and settings live separately from plugin updates:
 ~/.config/marchybar/settings.json
 ~/.config/marchybar/rules.json
 ~/.local/state/marchybar/last-good.json
-~/.cache/marchybar/native/<source-hash>/
+~/.cache/marchybar/native/<platform-architecture-source-hash>/
 $XDG_RUNTIME_DIR/marchybar/control.sock
 ```
 
@@ -109,7 +113,7 @@ If a release changes the device helper, run **Set up Touch Bar** again. Updates 
 
 ## Disable or uninstall
 
-Disabling the Touch Bar closes the renderer and restores the previous USB mode and brightness. To remove the helper and plugin while preserving presets:
+Disabling the Touch Bar closes the renderer. On T2 it restores the previous USB mode and brightness; on Apple Silicon it leaves the bar dark and does not restart `tiny-dfr`. To remove the helper and plugin while preserving presets:
 
 ```sh
 marchybar disable
@@ -118,6 +122,8 @@ omarchy plugin remove marchybar.touchbar --yes
 ```
 
 User presets are deliberately retained. Remove `~/.config/marchybar` separately only if you want to erase them.
+
+Apple Silicon testers must also follow the [tiny-dfr handoff](docs/APPLE-SILICON.md#return-to-tiny-dfr) after removing the helper.
 
 ## Development
 

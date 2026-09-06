@@ -3,15 +3,24 @@ set -euo pipefail
 MARCHYBAR_ROOT=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
 
 prepare() {
-  if [[ -f "$MARCHYBAR_ROOT/build/Release/drm_backend.node" ]]; then
+  local runtime fingerprint build_dir
+  runtime=$(node -e '
+    try {
+      require(process.argv[1]);
+      console.log("local");
+    } catch {
+      console.log(`${process.platform}/${process.arch}`);
+    }
+  ' "$MARCHYBAR_ROOT/build/Release/drm_backend.node")
+  if [[ "$runtime" == local ]]; then
     export MARCHYBAR_NATIVE_PATH="$MARCHYBAR_ROOT/build/Release/drm_backend.node"
     return
   fi
-  local fingerprint build_dir
-  fingerprint=$(python3 - "$MARCHYBAR_ROOT" <<'PY'
+  fingerprint=$(python3 - "$MARCHYBAR_ROOT" "$runtime" <<'PY'
 import hashlib,sys
 from pathlib import Path
 p=Path(sys.argv[1]);h=hashlib.sha256()
+h.update(sys.argv[2].encode()+b'\0')
 for f in sorted((p/'native/src').glob('*'))+[p/'package.json',p/'package-lock.json',p/'binding.gyp']:
   h.update(f.read_bytes())
 print(h.hexdigest()[:20])
@@ -69,7 +78,7 @@ MarchyBar — native Omarchy Touch Bar configuration
   marchybar list                     List presets
   marchybar apply ID                 Pin a preset
   marchybar auto                     Resume automatic app layouts
-  marchybar enable | disable         Use MarchyBar / restore previous bar mode
+  marchybar enable | disable         Use MarchyBar / release hardware (Asahi: dark)
   marchybar import FILE              Import an editable preset
   marchybar export ID FILE           Export a preset as JSON
   marchybar diagnostics              Print hardware/backend diagnostics

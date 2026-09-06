@@ -114,9 +114,9 @@ export class MarchyBar {
   async openHardware() {
     if (this.previewOnly) throw new Error('This instance is in preview-only mode');
     if (this.device) return;
-    if (this.locked) { this.store.saveSettings({ hardwareEnabled: true }, this.store.revision); this.status = 'locked'; this.refresh(); return; }
     this.hardware = diagnose();
-    if (!this.hardware.supported) throw new Error('This model is outside the Intel T2 MacBook Pro support target. Preview is available.');
+    if (!this.hardware.supported) throw new Error('This is not a recognized Touch Bar model. Preview is available.');
+    if (this.locked) { this.store.saveSettings({ hardwareEnabled: true }, this.store.revision); this.status = 'locked'; this.refresh(); return; }
     if (!this.hardware.broker) throw new Error('Run MarchyBar setup to install the device helper');
     this.status = 'starting'; this.broadcastState();
     const device = new Device({ onInput: (...args) => this.input(...args), onFn: value => { this.fn = value; this.refresh(); }, onActivity: () => this.setIdle(false, false), onSleep: event => { this.disableHardware(false).then(() => { this.status = 'recovering'; this.retryAt = Date.now() + 10000; this.broadcastState(); }); }, onDisconnect: error => { this.disableHardware(false).then(() => { this.status = 'recovering'; this.fail(error); }); } });

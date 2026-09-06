@@ -9,13 +9,15 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
-from setup_test import SetupTest
 
 spec = importlib.util.spec_from_file_location('broker', Path(__file__).parents[1] / 'packaging/device-broker.py')
 broker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(broker)
 
 class BrokerTest(unittest.TestCase):
+  def setUp(self):
+    self.enterContext(patch.object(broker, 'hardware_profile', return_value=('t2', 'MacBookPro16,1')))
+
   def test_only_active_local_user_can_acquire(self):
     def command(args):
       if 'list-sessions' in args:
@@ -118,6 +120,7 @@ class RecoveryTest(unittest.TestCase):
       raise AssertionError(f'Unexpected subprocess: {args}')
 
     for target, kwargs in [('usb_device', {'return_value': self.device}),
+                           ('hardware_profile', {'return_value': ('t2', 'MacBookPro16,1')}),
                            ('backlight', {'return_value': self.device}),
                            ('RECOVERY', {'new': self.journal}),
                            ('nodes', {'return_value': self.files}),
@@ -519,4 +522,9 @@ class RecoveryTest(unittest.TestCase):
     self.assert_restored()
 
 
-if __name__=='__main__': unittest.main()
+if __name__ == '__main__':
+  # Use the same modules as discovery, without importing TestCases twice.
+  def load_tests(loader, tests, pattern):
+    return loader.loadTestsFromNames(['broker_test', 'asahi_broker_test', 'setup_test'])
+
+  unittest.main()

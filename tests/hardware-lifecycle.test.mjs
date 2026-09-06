@@ -33,7 +33,7 @@ mock.restoreAll();
 if (nativePath === undefined) delete process.env.MARCHYBAR_NATIVE_PATH;
 else process.env.MARCHYBAR_NATIVE_PATH = nativePath;
 
-function fixture(t, { failBrightness = false, failPersistence = false, wakeDuringOpen = false, runtime = false, persisted = false } = {}) {
+function fixture(t, { failBrightness = false, failPersistence = false, wakeDuringOpen = false, runtime = false, persisted = false, profile = 't2' } = {}) {
   const requests = [], inputs = [], actions = [], sliders = [], opened = [], statuses = [];
   let brightnessRequests = 0, saves = 0;
   const open = Device.prototype.open;
@@ -48,15 +48,21 @@ function fixture(t, { failBrightness = false, failPersistence = false, wakeDurin
     return geometry;
   });
   const read = fs.readFileSync.bind(fs), exists = fs.existsSync.bind(fs);
-  t.mock.method(fs, 'readFileSync', (file, ...args) => file === '/sys/devices/virtual/dmi/id/product_name' ? 'MacBookPro15,1' : file === '/proc/sys/kernel/osrelease' ? 'fixture-kernel' : read(file, ...args));
-  t.mock.method(fs, 'existsSync', file => file === '/run/marchybar/device.sock' || file === '/sys/module/appletbdrm' ? true : file === 'fixture:control' || String(file).startsWith('/usr/lib/modules/fixture-kernel/') ? false : exists(file));
+  t.mock.method(fs, 'readFileSync', (file, ...args) => {
+    if (file === '/sys/firmware/devicetree/base/compatible') {
+      if (profile === 't2') throw Object.assign(new Error('missing DT'), { code: 'ENOENT' });
+      return profile === 'asahi' ? 'apple,j293\0apple,t8103\0' : 'apple,j313\0';
+    }
+    return file === '/sys/devices/virtual/dmi/id/product_name' ? (profile === 't2' ? 'MacBookPro15,1' : '') : file === '/proc/sys/kernel/osrelease' ? 'fixture-kernel' : read(file, ...args);
+  });
+  t.mock.method(fs, 'existsSync', file => file === '/run/marchybar/device.sock' || file === (profile === 'asahi' ? '/sys/module/adpdrm' : '/sys/module/appletbdrm') ? true : file === 'fixture:control' || String(file).startsWith('/usr/lib/modules/fixture-kernel/') ? false : exists(file));
   class Socket extends EventEmitter {
     destroyed = false;
     constructor() { super(); queueMicrotask(() => this.emit('connect')); }
     write(line) {
       const request = JSON.parse(line); requests.push(request);
       const fail = request.action === 'brightness' && ++brightnessRequests === 1 && failBrightness;
-      const data = request.action === 'acquire' ? { drm: 'fixture:drm', touch: 'fixture:touch', keyboard: 'fixture:keyboard' } : {};
+      const data = request.action === 'acquire' ? { drm: 'fixture:drm', touch: 'fixture:touch', keyboard: 'fixture:keyboard', ...(profile === 'asahi' ? { profile } : {}) } : {};
       queueMicrotask(() => this.emit('data', Buffer.from(JSON.stringify({ id: request.id, ok: !fail, data, error: 'initial brightness failed' }) + '\n')));
       return true;
     }
@@ -101,6 +107,49 @@ function fixture(t, { failBrightness = false, failPersistence = false, wakeDurin
     finally { if (runtime) fs.rmSync(app.runtimeDir, { recursive: true, force: true }); }
   });
   return { app, requests, inputs, actions, sliders, opened, statuses };
+}
+
+for (const profile of ['t2', 'asahi']) {
+  test(`${profile} locks and disables through broker release, then reacquires on unlock`, async t => {
+    const { app, requests, opened } = fixture(t, { profile });
+    await app.handle({ method: 'hardware.enable' });
+    assert.equal(app.status, 'ready');
+    assert.equal(app.hardware.profile, profile);
+    assert.equal(app.device.info.profile, profile === 'asahi' ? 'asahi' : undefined, 'old T2 broker replies need no profile');
+    const diagnostic = await app.handle({ method: 'diagnostics' });
+    assert.equal(diagnostic.profile, profile);
+    assert.equal(diagnostic.experimental, profile === 'asahi');
+    assert.equal(diagnostic.supported, true);
+    await app.handle({ method: 'heartbeat', params: { locked: true } });
+    assert.equal(app.status, 'locked');
+    assert.equal(app.device, null);
+    assert.equal(app.store.settings.hardwareEnabled, true);
+    assert.equal(opened[0].display.closed, true);
+    assert.equal(opened[0].touch.stopped, true);
+    assert.equal(opened[0].keyboard.stopped, true);
+    assert.deepEqual(requests.map(r => r.action), ['acquire', 'brightness', 'release']);
+    await app.handle({ method: 'heartbeat', params: { locked: false } });
+    assert.equal(app.status, 'ready');
+    await app.handle({ method: 'hardware.disable' });
+    assert.equal(app.status, 'disabled');
+    assert.equal(app.device, null);
+    assert.equal(app.store.settings.hardwareEnabled, false);
+    assert.equal(opened[1].display.closed, true);
+    // Release owns profile-specific cleanup. Never restore brightness after releasing Asahi.
+    assert.deepEqual(requests.map(r => r.action), ['acquire', 'brightness', 'release', 'acquire', 'brightness', 'release']);
+  });
+}
+
+for (const locked of [false, true]) {
+  test(`unrecognized models reject enable while locked=${locked} without acquiring or persisting`, async t => {
+    const { app, requests } = fixture(t, { profile: null });
+    app.locked = locked;
+    app.store.settings.hardwareEnabled = false;
+    await assert.rejects(app.handle({ method: 'hardware.enable' }), /not a recognized Touch Bar model/);
+    assert.equal(app.store.settings.hardwareEnabled, false);
+    assert.deepEqual(requests, []);
+    assert.equal(app.hardware.status, 'preview-only');
+  });
 }
 
 for (const hardwareEnabled of [true, false]) {

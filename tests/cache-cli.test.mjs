@@ -49,8 +49,15 @@ function fixture(t) {
     fs.copyFileSync(path.join(repo, file), path.join(plugin, file));
   }
   fs.writeFileSync(path.join(plugin, 'native/src/fixture.cpp'), 'int fixture = 1;\n');
+  fs.writeFileSync(path.join(root, 'runtime.cjs'), `
+for (const key of ['platform', 'arch']) {
+  const value = process.env['FIXTURE_NODE_' + key.toUpperCase()];
+  if (value) Object.defineProperty(process, key, { value });
+}
+`);
   const mock = path.join(root, 'mock.bash');
   fs.writeFileSync(mock, `
+node() { command "$FIXTURE_NODE" --require "$FIXTURE_ROOT/runtime.cjs" "$@"; }
 pkg-config() { [[ "$*" == '--exists cairo libdrm pangocairo librsvg-2.0' ]]; }
 flock() {
   if [[ \${CHECK_CONTENTION:-no} == yes ]]; then
@@ -84,7 +91,7 @@ npm() {
   fi
 }
 `);
-  const env = { ...process.env, BASH_ENV: mock, HOME: path.join(root, 'home'), XDG_CACHE_HOME: path.join(root, 'cache'), FIXTURE_ROOT: root };
+  const env = { ...process.env, BASH_ENV: mock, HOME: path.join(root, 'home'), XDG_CACHE_HOME: path.join(root, 'cache'), FIXTURE_ROOT: root, FIXTURE_NODE: process.execPath };
   const start = (extra = {}) => child(t, '/bin/bash', [path.join(plugin, 'bin/marchybar'), 'prepare'], { ...env, ...extra });
   const prepare = async (extra = {}) => {
     const result = await start(extra).done;
@@ -179,6 +186,36 @@ test('native cache hashes package.json and native sources while reusing unchange
   fs.writeFileSync(path.join(f.plugin, 'native/src/fixture.cpp'), 'int fixture = 2;\n');
   await f.prepare();
   assert.equal(f.builds(), 3, 'native source changes must also rebuild');
+});
+
+test('native cache separates Node architectures and platforms', async t => {
+  const f = fixture(t);
+  for (const [platform, arch] of [['linux', 'x64'], ['linux', 'arm64'], ['freebsd', 'arm64']]) {
+    await f.prepare({ FIXTURE_NODE_PLATFORM: platform, FIXTURE_NODE_ARCH: arch, BUILD_TAG: `${platform}/${arch}` });
+  }
+  assert.equal(f.builds(), 3);
+  assert.equal(f.entries().length, 3);
+  assert.deepEqual(f.artifacts().map(file => fs.readFileSync(file, 'utf8')).sort(), ['freebsd/arm64\n', 'linux/arm64\n', 'linux/x64\n']);
+  await f.prepare({ FIXTURE_NODE_PLATFORM: 'linux', FIXTURE_NODE_ARCH: 'x64' });
+  assert.equal(f.builds(), 3, 'returning to an architecture reuses its completed cache');
+});
+
+test('an unloadable local addon falls back to the isolated cache without changing local files', async t => {
+  const f = fixture(t);
+  const localDir = path.join(f.plugin, 'build/Release');
+  fs.mkdirSync(localDir, { recursive: true });
+  const addon = path.join(localDir, 'drm_backend.node');
+  const userFile = path.join(localDir, 'user-file');
+  fs.writeFileSync(addon, 'invalid native addon\n');
+  fs.writeFileSync(userFile, 'keep me\n');
+  await f.prepare();
+  assert.equal(f.builds(), 1);
+  assert.equal(fs.readFileSync(f.artifacts()[0], 'utf8'), 'complete\n');
+  assert.ok(fs.existsSync(path.join(f.entries()[0], '.complete')));
+  await f.prepare();
+  assert.equal(f.builds(), 1, 'invalid local addon does not prevent completed cache reuse');
+  assert.equal(fs.readFileSync(addon, 'utf8'), 'invalid native addon\n');
+  assert.equal(fs.readFileSync(userFile, 'utf8'), 'keep me\n');
 });
 
 test('CLI preserves UTF-8 responses split at every multibyte boundary (#7)', async t => {

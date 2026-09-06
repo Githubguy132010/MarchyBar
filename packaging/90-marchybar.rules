@@ -2,3 +2,18 @@
 # Access is leased to the active local user by marchybar-device.service.
 SUBSYSTEM=="drm", KERNEL=="card[0-9]*", DRIVERS=="appletbdrm", TAG-="master-of-seat", ENV{ID_SEAT}="seat-marchybar"
 SUBSYSTEM=="input", ATTRS{name}=="Apple Inc. Touch Bar Display Touchpad", ENV{ID_SEAT}="seat-marchybar", ENV{LIBINPUT_IGNORE_DEVICE}="1"
+
+# The installer also places this file at 99-zz-marchybar.rules on Asahi, after
+# tiny-dfr's 99-touchbar-*.rules. ENV and TAG do not support final assignments.
+# Preserve tiny-dfr's systemd aliases and activation properties so explicit
+# unmask/start works after uninstall retriggers distro permissions. Runtime
+# masking is the user's choice. adp is the dedicated Touch Bar driver; udev
+# sysattr matching sees only the first compatible string, not generic fallbacks.
+SUBSYSTEM=="drm", KERNEL=="card[0-9]*", DRIVERS=="adp", TAG-="master-of-seat", TAG-="uaccess", ENV{ID_SEAT}="seat-marchybar", OWNER:="root", GROUP:="root", MODE:="0600"
+SUBSYSTEM!="input", GOTO="marchybar_asahi_end"
+# Driver and input attributes live on different ancestors; match in two steps.
+DRIVERS=="apple-z2", SUBSYSTEMS=="spi", ATTRS{of_node/compatible}=="apple,j293-touchbar|apple,j493-touchbar", GOTO="marchybar_asahi_touch"
+GOTO="marchybar_asahi_end"
+LABEL="marchybar_asahi_touch"
+ATTRS{name}=="MacBookPro17,1 Touch Bar|Mac14,7 Touch Bar", ATTRS{phys}=="apple_z2", ATTRS{id/bustype}=="001c", ATTRS{id/vendor}=="0000", TAG-="uaccess", ENV{ID_SEAT}="seat-marchybar", ENV{LIBINPUT_IGNORE_DEVICE}="1", OWNER:="root", GROUP:="root", MODE:="0600"
+LABEL="marchybar_asahi_end"
