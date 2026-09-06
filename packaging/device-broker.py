@@ -4,6 +4,7 @@
 The renderer runs as the active local user. This broker only changes the known
 Touch Bar USB mode, grants temporary ACLs on identified nodes and sets its light.
 Closing a lease revokes access and restores the original firmware configuration.
+Incomplete restoration stays journaled and blocks acquisition until recovery succeeds.
 """
 import fcntl
 import glob
@@ -22,12 +23,14 @@ SOCKET = '/run/marchybar/device.sock'
 LOCK = threading.RLock()
 LEASE = None
 SLEEPING = False
+STOPPING = False
 RECOVERY = Path("/run/marchybar/lease.json")
 
 
 def save_journal(value):
   temp = RECOVERY.with_suffix('.tmp')
   with open(temp, 'w', opener=lambda p, flags: os.open(p, flags | os.O_NOFOLLOW, 0o600)) as file:
+    os.fchmod(file.fileno(), 0o600)
     json.dump(value, file)
     file.flush()
     os.fsync(file.fileno())
@@ -111,6 +114,8 @@ def backlight():
 
 class Lease:
   def __init__(self, uid):
+    # Handler holds LOCK: finish pending cleanup before taking a new baseline.
+    recover()
     self.uid = uid
     self.acls = []
     self.device = usb_device()
@@ -118,6 +123,7 @@ class Lease:
     self.light = backlight()
     self.original_brightness = read(self.light / 'brightness') if self.light else None
     self.closed = False
+    self.restored = False
     self.notify = None
 
   def acquire(self):
@@ -163,6 +169,8 @@ class Lease:
     return found
 
   def brightness(self, value):
+    if self.closed or SLEEPING or STOPPING:
+      raise RuntimeError('Touch Bar lease is no longer active')
     if type(value) is not int or not 0 <= value <= 255:
       raise ValueError('Brightness must be an integer from 0 to 255')
     self.light = backlight()
@@ -172,24 +180,17 @@ class Lease:
     (self.light / 'brightness').write_text(str(round(value / 255 * maximum)))
 
   def close(self):
-    if self.closed:
-      return
+    if self.restored:
+      return True
+    # Reject requests even if permission restoration needs another attempt.
     self.closed = True
-    for file, inode, rdev, acl in self.acls:
-      try:
-        st = os.stat(file)
-        if st.st_ino == inode and st.st_rdev == rdev:
-          subprocess.run(['/usr/bin/setfacl', '--set-file=-', file], input=acl + '\n', text=True, check=True, timeout=3)
-      except (OSError, subprocess.SubprocessError):
-        pass
     try:
-      mode(self.device, self.original)
-      light = backlight()
-      if light and self.original_brightness is not None:
-        (light / 'brightness').write_text(self.original_brightness)
-      RECOVERY.unlink(missing_ok=True)
-    except (OSError, RuntimeError) as e:
-      print(f'MarchyBar could not restore Touch Bar mode: {e}', flush=True)
+      recover()
+      self.restored = True
+      return True
+    except RuntimeError as e:
+      print(str(e), flush=True)
+      return False
 
 
 class Handler(socketserver.StreamRequestHandler):
@@ -217,6 +218,8 @@ class Handler(socketserver.StreamRequestHandler):
             raise PermissionError('Only the active local desktop session can use MarchyBar hardware')
           with LOCK:
             if action == 'acquire':
+              if STOPPING:
+                raise RuntimeError('The device helper is stopping')
               if SLEEPING:
                 raise RuntimeError('The system is preparing to sleep')
               if LEASE is not None:
@@ -231,17 +234,25 @@ class Handler(socketserver.StreamRequestHandler):
                 raise
               LEASE = mine
             elif action == 'release':
+              restored = True
               if mine:
-                mine.close()
                 if LEASE is mine:
+                  restored = mine.close()
                   LEASE = None
                 mine = None
+              if LEASE is None and RECOVERY.exists():
+                restored = False
+              if not restored:
+                raise RuntimeError('Touch Bar cleanup is incomplete; recovery will be retried before acquisition')
               data = {'restored': True}
-            elif action == 'brightness' and mine:
-              mine.brightness(msg.get('value'))
-              data = {'brightness': msg['value']}
-            elif action == 'ping' and mine:
-              data = {'alive': True}
+            elif action in ('brightness', 'ping'):
+              if SLEEPING or STOPPING or mine is None or mine.closed or LEASE is not mine:
+                raise RuntimeError('Touch Bar lease is no longer active')
+              if action == 'brightness':
+                mine.brightness(msg.get('value'))
+                data = {'brightness': msg['value']}
+              else:
+                data = {'alive': True}
             else:
               raise ValueError('Unsupported device operation')
           answer = {'id': ident, 'ok': True, 'data': data}
@@ -250,10 +261,9 @@ class Handler(socketserver.StreamRequestHandler):
         self.send(answer)
     finally:
       with LOCK:
-        if mine:
+        if mine and LEASE is mine:
           mine.close()
-          if LEASE is mine:
-            LEASE = None
+          LEASE = None
 
   def send(self, message):
     with self.write_lock:
@@ -264,9 +274,13 @@ class Handler(socketserver.StreamRequestHandler):
         pass
 
 
-def release_for_event(event):
+def release_for_event(event, lease=None):
+  global LEASE
   with LOCK:
-    lease = LEASE
+    if lease is None:
+      lease = LEASE
+    if LEASE is not lease:
+      return
     if lease and lease.notify:
       lease.notify({'event': event})
   # Let the renderer close DRM and input before resetting USB.
@@ -274,8 +288,9 @@ def release_for_event(event):
   while lease and not lease.closed and time.monotonic() < deadline:
     time.sleep(0.025)
   with LOCK:
-    if lease and not lease.closed:
+    if lease and LEASE is lease:
       lease.close()
+      LEASE = None
 
 
 class SleepMonitor:
@@ -292,15 +307,11 @@ class SleepMonitor:
     threading.Thread(target=self.loop.run, daemon=True).start()
 
   def audit_session(self):
-    global LEASE
     with LOCK:
       lease = LEASE
     try:
       if lease and not lease.closed and not active_local(lease.uid):
-        release_for_event('inactive')
-        with LOCK:
-          if LEASE is lease:
-            LEASE = None
+        release_for_event('inactive', lease)
     except Exception as e:
       print(f'Session audit: {e}', flush=True)
     return True
@@ -316,12 +327,11 @@ class SleepMonitor:
       print(f'Suspend coordination unavailable: {e}', flush=True)
 
   def sleep(self, connection, sender, path, interface, signal_name, parameters):
-    global SLEEPING, LEASE
-    SLEEPING = parameters.unpack()[0]
+    global SLEEPING
+    with LOCK:
+      SLEEPING = parameters.unpack()[0]
     if SLEEPING:
       release_for_event('sleep')
-      with LOCK:
-        LEASE = None
       if self.fd is not None:
         os.close(self.fd)
         self.fd = None
@@ -330,24 +340,45 @@ class SleepMonitor:
 
 
 def recover():
+  if LEASE is not None and not LEASE.closed:
+    raise RuntimeError('Cannot recover while a Touch Bar lease is active')
   if not RECOVERY.exists():
     return
   try:
     saved = json.loads(RECOVERY.read_text())
+    pending = []
+    errors = []
     for file, inode, rdev, acl in saved.get('acls', []):
       # Recovery data is root-owned, but still restrict writes to device nodes.
       if not file.startswith(('/dev/input/event', '/dev/dri/card')):
         continue
       try:
         st = os.stat(file)
+      except FileNotFoundError:
+        continue
+      except OSError as e:
+        pending.append((file, inode, rdev, acl))
+        errors.append(f'ACL identity check failed for {file}: {e}')
+        continue
+      try:
         if st.st_ino == inode and st.st_rdev == rdev:
           subprocess.run(['/usr/bin/setfacl', '--set-file=-', file], input=acl + '\n', text=True, check=True, timeout=3)
-      except (OSError, subprocess.SubprocessError):
-        pass
-    mode(usb_device(), saved['original'] if saved['original'] in [1, 2] else 1)
-    light = backlight()
-    if light and saved.get('brightness') is not None:
-      (light / 'brightness').write_text(str(int(saved['brightness'])))
+      except (OSError, subprocess.SubprocessError) as e:
+        pending.append((file, inode, rdev, acl))
+        errors.append(f'ACL restoration failed for {file}: {e}')
+    saved['acls'] = pending
+    save_journal(saved)
+    try:
+      mode(usb_device(), saved['original'] if saved['original'] in [1, 2] else 1)
+      light = backlight()
+      if saved.get('brightness') is not None:
+        if not light:
+          raise RuntimeError('Touch Bar backlight unavailable during restoration')
+        (light / 'brightness').write_text(str(int(saved['brightness'])))
+    except (OSError, RuntimeError) as e:
+      errors.append(str(e))
+    if errors:
+      raise RuntimeError('; '.join(errors))
     RECOVERY.unlink()
   except Exception as e:
     raise RuntimeError(f'Cannot recover interrupted Touch Bar lease: {e}') from e
@@ -355,6 +386,14 @@ def recover():
 
 class Server(socketserver.ThreadingUnixStreamServer):
   daemon_threads = True
+
+
+def stop(signum, frame):
+  global STOPPING
+  with LOCK:
+    STOPPING = True
+  release_for_event('shutdown')
+  raise SystemExit(1 if RECOVERY.exists() else 0)
 
 
 def main():
@@ -369,9 +408,6 @@ def main():
   monitor = SleepMonitor()
   with Server(SOCKET, Handler) as server:
     os.chmod(SOCKET, 0o666)  # Requests are authenticated with SO_PEERCRED + logind.
-    def stop(signum, frame):
-      release_for_event('shutdown')
-      raise SystemExit(0)
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     server.serve_forever()

@@ -105,8 +105,22 @@ export function validateRules(rules, presets) {
 export function matches(pattern, value) {
   if (typeof pattern !== 'string' || typeof value !== 'string') return false;
   return pattern.split('|').some(p => {
-    const escaped = p.trim().replace(/[.+^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*').replaceAll('?', '.');
-    return new RegExp(`^${escaped}$`, 'i').test(value);
+    p = p.trim();
+    // Single-character regexes retain the existing case folding without backtracking.
+    const tokens = p.split('').map(c => c === '*' ? null : new RegExp(c === '?' ? '.' : c.replace(/[.+^${}()|[\]\\]/g, '\\$&'), 'i'));
+    let previous = new Uint8Array(p.length + 1), current = new Uint8Array(p.length + 1);
+    previous[0] = 1;
+    for (let j = 1; j <= p.length; j++) previous[j] = p[j - 1] === '*' ? previous[j - 1] : 0;
+    // Each input character visits each pattern position once: O(value.length * p.length).
+    for (let i = 0; i < value.length; i++) {
+      const c = value[i], wildcard = !/[\n\r\u2028\u2029]/.test(c);
+      current[0] = 0;
+      for (let j = 1; j <= p.length; j++) {
+        current[j] = p[j - 1] === '*' ? current[j - 1] || (wildcard && previous[j]) : previous[j - 1] && tokens[j - 1].test(c);
+      }
+      [previous, current] = [current, previous];
+    }
+    return Boolean(previous[p.length]);
   });
 }
 export function selectPreset({ presets, settings, rules, context, locked = false }) {

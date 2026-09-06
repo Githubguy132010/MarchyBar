@@ -7,6 +7,7 @@ const args = process.argv.slice(2), command = args.shift();
 let nextId = 1;
 const pending = new Map();
 const socket = net.createConnection(socketPath);
+socket.setEncoding('utf8');
 let buffer = '';
 socket.on('data', chunk => { buffer += chunk; let end; while ((end = buffer.indexOf('\n')) >= 0) { const m = JSON.parse(buffer.slice(0, end)); buffer = buffer.slice(end + 1); const p = pending.get(m.id); if (p) { pending.delete(m.id); m.ok ? p.resolve(m.data) : p.reject(new Error(m.error)); } } });
 function request(method, params = {}, revision) { return new Promise((resolve, reject) => { const id = nextId++; pending.set(id, { resolve, reject }); socket.write(JSON.stringify({ id, method, params, revision }) + '\n'); }); }

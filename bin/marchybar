@@ -12,28 +12,37 @@ prepare() {
 import hashlib,sys
 from pathlib import Path
 p=Path(sys.argv[1]);h=hashlib.sha256()
-for f in sorted((p/'native/src').glob('*'))+[p/'package-lock.json',p/'binding.gyp']:
+for f in sorted((p/'native/src').glob('*'))+[p/'package.json',p/'package-lock.json',p/'binding.gyp']:
   h.update(f.read_bytes())
 print(h.hexdigest()[:20])
 PY
 )
   build_dir="${XDG_CACHE_HOME:-$HOME/.cache}/marchybar/native/$fingerprint"
   export MARCHYBAR_NATIVE_PATH="$build_dir/build/Release/drm_backend.node"
-  if [[ -f $MARCHYBAR_NATIVE_PATH ]]; then return; fi
   mkdir -p "$build_dir"
-  exec {build_lock}>"$build_dir/.lock"
-  flock "$build_lock"
-  if [[ ! -f $MARCHYBAR_NATIVE_PATH ]]; then
+  (
+    flock 9
+    if [[ -f "$build_dir/.complete" && -s $MARCHYBAR_NATIVE_PATH ]]; then exit 0; fi
+    # Keep the lock inode stable; only completed builds may be reused.
+    local staging_dir="$build_dir/.staging"
+    rm -f -- "$build_dir/.complete"
+    rm -rf -- "$staging_dir"
+    mkdir -p "$staging_dir"
+    trap 'rm -rf -- "$staging_dir"' EXIT
     echo "Preparing MarchyBar's renderer…" >&2
     pkg-config --exists cairo libdrm pangocairo librsvg-2.0 || {
-      echo "Missing build libraries. See README.md → Setup." >&2; return 1;
+      echo "Missing build libraries. See README.md → Setup." >&2; exit 1;
     }
-    cp "$MARCHYBAR_ROOT/package.json" "$MARCHYBAR_ROOT/package-lock.json" "$MARCHYBAR_ROOT/binding.gyp" "$build_dir/"
-    cp -R "$MARCHYBAR_ROOT/native" "$build_dir/"
-    (cd "$build_dir" && npm ci --ignore-scripts --include=dev && npm run build) >&2
-  fi
-  flock -u "$build_lock"
-  exec {build_lock}>&-
+    cp "$MARCHYBAR_ROOT/package.json" "$MARCHYBAR_ROOT/package-lock.json" "$MARCHYBAR_ROOT/binding.gyp" "$staging_dir/"
+    cp -R "$MARCHYBAR_ROOT/native" "$staging_dir/"
+    (cd "$staging_dir" && npm ci --ignore-scripts --include=dev && npm run build) >&2
+    [[ -s "$staging_dir/build/Release/drm_backend.node" ]] || {
+      echo "Renderer build did not produce drm_backend.node." >&2; exit 1;
+    }
+    rm -rf -- "$build_dir/build"
+    mv -- "$staging_dir/build" "$build_dir/build"
+    touch "$build_dir/.complete"
+  ) 9>"$build_dir/.lock"
 }
 
 action=${1:-open}
