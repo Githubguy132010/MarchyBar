@@ -141,6 +141,10 @@ void TouchReader::ReadLoop(int fd, int cancel_rfd) {
     ssize_t n = read(fd, &ev, sizeof(ev));
     if (n != (ssize_t)sizeof(ev)) { device_error = true; break; }
 
+    // Lost evdev events may include a release. Cancel via disconnect/reopen;
+    // never interpret the remaining frames using stale contact state.
+    if (ev.type == EV_SYN && ev.code == SYN_DROPPED) { device_error = true; break; }
+
     // Which slot subsequent ABS_MT_* events address.
     if (ev.type == EV_ABS && ev.code == TB_ABS_MT_SLOT) {
       cur_slot = ev.value;

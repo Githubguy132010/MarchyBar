@@ -41,14 +41,20 @@ export class Device {
       this.touch = new native.TouchReader(this.info.touch);
       const ranges = this.touch.ranges();
       this.touch.start((type, rawX, rawY) => {
+        if (this.closed) return;
         if (type < 0) { this.onDisconnect('Touch Bar disconnected'); return; }
         const x = (rawX - ranges.minX) / (ranges.maxX - ranges.minX) * this.geometry.width;
         const y = (rawY - ranges.minY) / (ranges.maxY - ranges.minY) * this.geometry.height;
-        this.onActivity(); this.onInput(['start', 'move', 'end'][type], x, y);
+        // The wake-only gate must see the off state before activity clears it.
+        this.onInput(['start', 'move', 'end'][type], x, y); this.onActivity();
       });
       if (this.info.keyboard) {
         this.keyboard = new native.KeyboardReader(this.info.keyboard);
-        this.keyboard.start((code, value) => { if (code < 0) { this.onFn(false); return; } this.onActivity(); if (code === 464) this.onFn(value !== 0); });
+        this.keyboard.start((code, value) => {
+          if (this.closed) return;
+          if (code < 0) { this.onFn(false); this.onDisconnect('Keyboard disconnected'); return; }
+          this.onActivity(); if (code === 464) this.onFn(value !== 0);
+        });
       }
       return this.geometry;
     } catch (e) { await this.close(); throw e; }

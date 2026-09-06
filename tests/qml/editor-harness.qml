@@ -17,6 +17,10 @@ ShellRoot {
       lastRequest = {method:method,params:params}
       if(method==="preview" && callback) callback(true,{boxes:[],geometry:{width:2170,height:60}})
       if(method==="preset.save" && callback) callback(true,params.preset)
+      if(method==="settings.save" && callback) {
+        snapshot=Object.assign({},snapshot,{settings:Object.assign({},snapshot.settings,params.settings)})
+        callback(true,true)
+      }
     }
   }
   Editor { id: editor; service:backend }

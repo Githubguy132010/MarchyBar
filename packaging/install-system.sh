@@ -4,7 +4,40 @@ set -euo pipefail
 [[ $EUID == 0 ]] || { echo 'Run marchybar setup from the editor or command line.' >&2; exit 1; }
 MARCHYBAR_PACKAGE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 if [[ ${1:-} == --remove ]]; then
-  systemctl disable --now marchybar-device.service || true
+  helper_state() {
+    local properties key value
+    properties=$(systemctl show marchybar-device.service -p LoadState -p ActiveState -p SubState -p Result) || {
+      echo 'Cannot confirm device helper state; keeping helper files.' >&2; return 1;
+    }
+    load= active= sub= result=
+    while IFS='=' read -r key value; do
+      case $key in
+        LoadState) load=$value ;;
+        ActiveState) active=$value ;;
+        SubState) sub=$value ;;
+        Result) result=$value ;;
+      esac
+    done <<< "$properties"
+  }
+  helper_state
+  if [[ $load != not-found ]]; then
+    [[ $load == loaded ]] || { echo 'Cannot identify device helper unit; keeping helper files.' >&2; exit 1; }
+    [[ $active != failed && $result == success ]] || {
+      echo 'Device helper failed. Resolve cleanup with journalctl -u marchybar-device.service before removing it.' >&2; exit 1;
+    }
+    systemctl disable --now marchybar-device.service || {
+      echo 'Could not stop/disable device helper; keeping helper files. Retry after checking its service state.' >&2; exit 1;
+    }
+    helper_state
+  fi
+  [[ $active == inactive && $sub == dead && ( $result == success || $load == not-found ) ]] || {
+    echo 'Device helper is not confirmed stopped cleanly; keeping helper files.' >&2; exit 1;
+  }
+  [[ ! -e /run/marchybar/lease.json ]] || {
+    echo 'Device cleanup is pending. Restart the helper to recover before removing it.' >&2; exit 1;
+  }
+  rm -f /run/marchybar/device.sock /run/marchybar/lease.tmp
+  rmdir /run/marchybar 2>/dev/null || true
   rm -f /etc/systemd/system/marchybar-device.service /etc/udev/rules.d/90-marchybar.rules /usr/local/lib/marchybar/device-broker.py
   rmdir /usr/local/lib/marchybar 2>/dev/null || true
   systemctl daemon-reload

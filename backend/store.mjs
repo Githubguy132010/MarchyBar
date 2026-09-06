@@ -6,7 +6,9 @@ import { clone, validId, validatePreset, validateRules, validateSettings, DEFAUL
 
 export function atomicWrite(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  if (fs.existsSync(file) && fs.lstatSync(file).isSymbolicLink()) throw new Error('Refusing to replace a symbolic link');
+  try {
+    if (fs.lstatSync(file).isSymbolicLink()) throw new Error('Refusing to replace a symbolic link');
+  } catch (e) { if (e.code !== 'ENOENT') throw e; }
   const temp = `${file}.${process.pid}.${crypto.randomBytes(5).toString('hex')}.tmp`;
   let fd;
   try {
@@ -72,18 +74,23 @@ export class Store {
     const refs = linked.length > 0 || this.rules.some(r => r.preset === id) || this.settings.defaultPreset === id || this.settings.pinnedPreset === id;
     if (refs && (!replacement || replacement === id)) throw new Error('Choose a replacement for the app rules and settings using this preset');
     if (replacement) this.get(replacement);
-    // Redirect references before removing their target. Each intermediate state is valid.
-    if (refs) {
-      this.rules = this.rules.map(r => r.preset === id ? { ...r, preset: replacement } : r);
-      this.settings = { ...this.settings, defaultPreset: this.settings.defaultPreset === id ? replacement : this.settings.defaultPreset, pinnedPreset: this.settings.pinnedPreset === id ? replacement : this.settings.pinnedPreset };
-      atomicWrite(path.join(this.configDir, 'rules.json'), this.rules);
-      atomicWrite(path.join(this.configDir, 'settings.json'), this.settings);
+    try {
+      // Redirect references before removing their target. Each intermediate state is valid.
+      if (refs) {
+        const rules = this.rules.map(r => r.preset === id ? { ...r, preset: replacement } : r);
+        const settings = { ...this.settings, defaultPreset: this.settings.defaultPreset === id ? replacement : this.settings.defaultPreset, pinnedPreset: this.settings.pinnedPreset === id ? replacement : this.settings.pinnedPreset };
+        atomicWrite(path.join(this.configDir, 'rules.json'), rules);
+        atomicWrite(path.join(this.configDir, 'settings.json'), settings);
+      }
+      for (const other of linked) {
+        const updated = redirect(clone(other), id, replacement); delete updated.bundled; delete updated.customized;
+        atomicWrite(path.join(this.presetDir, other.id + '.json'), updated);
+      }
+      fs.unlinkSync(path.join(this.presetDir, id + '.json'));
+    } finally {
+      // A partial write must publish the persisted state and its revision, even on failure.
+      this.load();
     }
-    for (const other of linked) {
-      const updated = redirect(clone(other), id, replacement); delete updated.bundled; delete updated.customized;
-      atomicWrite(path.join(this.presetDir, other.id + '.json'), updated);
-    }
-    fs.unlinkSync(path.join(this.presetDir, id + '.json')); this.load();
   }
   restore(id, revision) {
     this.checkRevision(revision); if (!this.bundled.some(p => p.id === id)) throw new Error('Only bundled presets have a factory version');
