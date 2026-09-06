@@ -19,6 +19,25 @@ const { Actions, LiveData } = await import('../backend/live.mjs');
 cp.execFile = original;
 syncBuiltinESMExports();
 
+test('bundled Terminal button launches directly without injecting a compositor shortcut', async () => {
+  const preset = JSON.parse(fs.readFileSync(new URL('../presets/developer.json', import.meta.url), 'utf8'));
+  const action = preset.pages.find(page => page.id === 'main').widgets.find(widget => widget.id === 'terminal').action;
+  assert.deepEqual(validateAction(action), []);
+  const calls = [], errors = [];
+  execute = async (file, args) => { calls.push([file, args]); return { stdout: '' }; };
+  let locked = false, preview = false;
+  const actions = new Actions({ live: { data: {} }, isLocked: () => locked, isPreview: () => preview, onError: e => errors.push(e) });
+  await actions.invoke(action);
+  assert.deepEqual(calls, [['omarchy', ['launch', 'terminal']]]);
+  preview = true;
+  await actions.invoke(action);
+  preview = false;
+  locked = true;
+  await actions.invoke(action);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(errors, []);
+});
+
 test('desktop IDs resolve direct and nested entries with XDG precedence', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marchybar-desktop-'));
   const previous = { XDG_DATA_HOME: process.env.XDG_DATA_HOME, XDG_DATA_DIRS: process.env.XDG_DATA_DIRS };
