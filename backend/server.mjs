@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
+import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 import { Store, atomicWrite } from './store.mjs';
 import { PROTOCOL_VERSION, TYPES, CHANNELS, validatePreset, selectPreset, DEFAULT_THEME, clamp } from './model.mjs';
@@ -23,7 +24,7 @@ export class MarchyBar {
     this.hardware = diagnose(); this.status = previewOnly ? 'preview' : this.hardware.status;
     this.error = ''; this.lastHeartbeat = 0; this.locked = !previewOnly; this.manualPage = null; this.fn = false; this.trial = null; this.sceneRevision = 0;
     this.actions = new Actions({ live: this.live, isLocked: () => this.locked, isPreview: () => !this.device,
-      onPreset: id => this.applyPreset(id), onPage: id => { this.manualPage = id; this.refresh(); },
+      onPreset: id => this.applyPreset(id), onPage: id => this.handle({ method: 'page', params: { id } }),
       onEditor: () => this.broadcast({ event: 'openEditor' }), onTouchbar: (value, final) => this.setBrightness(value, final), onError: error => this.fail(error) });
     this.gesture = new Gesture({ action: a => this.actions.invoke(a), slider: (...args) => this.actions.slider(...args), changed: () => this.draw(), released: () => this.refresh() });
     this.live.on('change', () => this.refresh());
@@ -32,7 +33,7 @@ export class MarchyBar {
   get active() {
     const selection = selectPreset({ ...this.store.snapshot(), context: this.live.data, locked: this.locked });
     const preset = this.locked ? this.store.bundled.find(p => p.id === 'classic') : this.trial ? this.trial.preset : this.store.get(selection.id);
-    let page = this.fn && preset.fnPage ? preset.fnPage : this.manualPage || preset.defaultPage;
+    let page = this.fn && preset.fnPage ? preset.fnPage : (this.trial && !this.locked ? this.trial.page : this.manualPage) || preset.defaultPage;
     if (!preset.pages.some(p => p.id === page)) page = preset.defaultPage;
     return { ...selection, id: preset.id, preset, page, reason: this.trial && !this.locked ? 'Trying changes · revert automatically' : selection.reason };
   }
@@ -53,7 +54,8 @@ export class MarchyBar {
   refresh() {
     if (this.stopping) return;
     if (this.gesture.capture && !this.locked) { this.draw(); return; }
-    const a = this.active;
+    // Track the underlying selection, not the temporary trial preset.
+    const a = selectPreset({ ...this.store.snapshot(), context: this.live.data, locked: this.locked });
     if (this.currentPreset !== a.id) { this.manualPage = null; this.currentPreset = a.id; }
     this.draw(); this.broadcastState();
   }
@@ -121,14 +123,19 @@ export class MarchyBar {
     try {
       this.geometry = await device.open(); this.device = device;
       this.previewDisplay.close(); this.previewDisplay = new Preview(this.geometry.width, this.geometry.height);
-      this.status = 'ready'; this.error = ''; this.lastFrame = null;
       await device.brightness(this.store.settings.brightness);
-      this.store.saveSettings({ hardwareEnabled: true }, this.store.revision); this.refresh();
-    } catch (e) { this.status = this.store.settings.hardwareEnabled ? 'recovering' : 'error'; this.retryAt = Date.now() + 10000; this.fail(e.message); throw e; }
+      this.store.saveSettings({ hardwareEnabled: true }, this.store.revision);
+      this.status = 'ready'; this.error = ''; this.lastFrame = null; this.refresh();
+    } catch (e) {
+      if (this.device === device) this.device = null;
+      this.gesture.cancel(); this.fn = false; this.wakeOnly = false;
+      await device.close();
+      this.status = this.store.settings.hardwareEnabled ? 'recovering' : 'error'; this.retryAt = Date.now() + 10000; this.fail(e.message); throw e;
+    }
   }
   async disableHardware(persist = true) {
     if (this.enabling) { try { await this.enabling; } catch {} }
-    this.gesture.cancel(); this.fn = false;
+    this.gesture.cancel(); this.fn = false; this.wakeOnly = false;
     const d = this.device; this.device = null;
     if (d) await d.close();
     if (persist) this.store.saveSettings({ hardwareEnabled: false }, this.store.revision);
@@ -174,7 +181,7 @@ export class MarchyBar {
       }
       case 'preset.save': { this.validateFit(params.preset); const p = this.store.save(params.preset, revision); this.previewDraft = null; this.refresh(); return p; }
       case 'preset.create': { const p = this.store.create(params.name || 'Untitled preset', params.from, revision); this.refresh(); return p; }
-      case 'preset.delete': this.store.delete(params.id, params.replacement, revision); this.refresh(); return true;
+      case 'preset.delete': try { this.store.delete(params.id, params.replacement, revision); return true; } finally { this.refresh(); }
       case 'preset.restore': this.store.restore(params.id, revision); this.refresh(); return true;
       case 'preset.import': { this.validateFit(params.preset); const p = this.store.import(params.preset, revision); this.refresh(); return p; }
       case 'file.import': {
@@ -196,11 +203,11 @@ export class MarchyBar {
       case 'preview.close': this.previewDraft = null; if (this.previewDisplay.geometry.width !== this.geometry.width) { this.previewDisplay.close(); this.previewDisplay = new Preview(this.geometry.width, 60); } this.lastFrame = null; this.draw(); return true;
       case 'try': {
         const p = validatePreset(params.preset); scene(p, params.page || p.defaultPage, this.geometry, this.data(), this.theme);
-        this.revertTrial(); this.trial = { preset: p, ends: Date.now() + 20000 }; this.manualPage = params.page || p.defaultPage;
+        this.revertTrial(); this.trial = { preset: p, page: params.page || p.defaultPage, ends: Date.now() + 20000 };
         this.trialTimer = setTimeout(() => { this.revertTrial(); this.refresh(); }, 20000); this.refresh(); return true;
       }
       case 'revert': this.revertTrial(); this.refresh(); return true;
-      case 'page': this.manualPage = params.id; this.refresh(); return true;
+      case 'page': if (this.trial && !this.locked) this.trial.page = params.id; else this.manualPage = params.id; this.refresh(); return true;
       case 'theme': this.theme = normalizeTheme(params); this.lastFrame = null; this.refresh(); if (this.previewDraft) this.renderPreview(this.previewDraft.preset, this.previewDraft.page, this.previewDraft.geometry.width); return true;
       case 'heartbeat': {
         this.lastHeartbeat = Date.now(); const locked = params.locked !== false;
@@ -234,21 +241,33 @@ export class MarchyBar {
     return p;
   }
   async start() {
-    if (fs.existsSync(this.socketPath)) {
-      if (fs.lstatSync(this.socketPath).isSymbolicLink()) throw new Error('Refusing a symbolic-link socket');
-      const alive = await new Promise(resolve => { const s = net.createConnection(this.socketPath); s.once('connect', () => { s.destroy(); resolve(true); }); s.once('error', () => resolve(false)); });
+    const existing = fs.lstatSync(this.socketPath, { throwIfNoEntry: false });
+    if (existing) {
+      if (!existing.isSocket()) throw new Error('Refusing a non-socket or symbolic-link socket path');
+      const alive = await new Promise((resolve, reject) => {
+        const s = net.createConnection(this.socketPath);
+        s.once('connect', () => { s.destroy(); resolve(true); });
+        s.once('error', error => { if (error.code === 'ECONNREFUSED') resolve(false); else reject(error); });
+      });
       if (alive) throw new Error('MarchyBar is already running');
+      const current = fs.lstatSync(this.socketPath, { throwIfNoEntry: false });
+      if (!current?.isSocket() || current.dev !== existing.dev || current.ino !== existing.ino) throw new Error('Socket path changed during probing');
       fs.unlinkSync(this.socketPath);
     }
     this.server = net.createServer(client => {
       this.clients.add(client); this.send(client, { event: 'state', state: this.snapshot() });
-      let buffer = '', chain = Promise.resolve();
+      const decoder = new StringDecoder('utf8');
+      let buffer = '', bytes = 0, chain = Promise.resolve();
       client.on('error', () => {}); client.once('close', () => this.clients.delete(client));
       client.on('data', chunk => {
-        buffer += chunk; if (buffer.length > 1024 * 1024) { client.destroy(); return; }
-        let end;
-        while ((end = buffer.indexOf('\n')) >= 0) {
-          const raw = buffer.slice(0, end); buffer = buffer.slice(end + 1);
+        let start = 0;
+        while (start < chunk.length) {
+          const end = chunk.indexOf(10, start), stop = end < 0 ? chunk.length : end + 1;
+          bytes += stop - start;
+          if (bytes > 1024 * 1024) { client.destroy(); return; }
+          buffer += decoder.write(chunk.subarray(start, stop)); start = stop;
+          if (end < 0) break;
+          const raw = buffer.slice(0, -1); buffer = ''; bytes = 0;
           chain = chain.then(async () => {
             let msg;
             try { msg = JSON.parse(raw); if (!msg || typeof msg !== 'object' || !Number.isInteger(msg.id)) throw new Error('Invalid request'); const data = await this.handle(msg, client); this.send(client, { id: msg.id, ok: true, data, revision: this.store.revision }); }
@@ -257,8 +276,19 @@ export class MarchyBar {
         }
       });
     });
-    await new Promise((resolve, reject) => { this.server.once('error', reject); this.server.listen(this.socketPath, resolve); });
-    fs.chmodSync(this.socketPath, 0o600);
+    // libuv unlinks its bind path on close, even if that path was replaced.
+    // A directory fd keeps the bind path short and safe after removing its names.
+    this.socketDir = fs.mkdtempSync(path.join(this.runtimeDir, '.socket-'));
+    try {
+      this.socketDirFd = fs.openSync(this.socketDir, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY);
+      const boundPath = `/proc/self/fd/${this.socketDirFd}/s`;
+      await new Promise((resolve, reject) => { this.server.once('error', reject); this.server.listen(boundPath, resolve); });
+      fs.chmodSync(boundPath, 0o600);
+      this.socketStat = fs.lstatSync(boundPath);
+      fs.linkSync(boundPath, this.socketPath);
+      fs.unlinkSync(boundPath);
+      fs.rmdirSync(this.socketDir);
+    } catch (error) { await this.stop(); throw error; }
     if (this.liveEnabled) this.live.start();
     this.refresh();
     this.safetyTimer = setInterval(() => {
@@ -276,7 +306,13 @@ export class MarchyBar {
     clearTimeout(this.previewTimer); this.previewDisplay.close();
     for (const c of this.clients) c.destroy();
     await new Promise(resolve => this.server?.close(resolve) || resolve());
-    try { fs.unlinkSync(this.socketPath); } catch {}
+    // Keep the fd until libuv finishes unlinking, so it cannot target a reused fd.
+    if (this.socketDirFd !== undefined) { fs.closeSync(this.socketDirFd); this.socketDirFd = undefined; }
+    try {
+      const current = fs.lstatSync(this.socketPath);
+      if (current.isSocket() && current.dev === this.socketStat?.dev && current.ino === this.socketStat?.ino) fs.unlinkSync(this.socketPath);
+    } catch {}
+    if (this.socketDir) { try { fs.rmdirSync(this.socketDir); } catch {} }
   }
 }
 

@@ -61,11 +61,18 @@ export class LiveData extends EventEmitter {
     socket.once('close', () => { clearTimeout(debounce); this.later(() => this.connectHyprland(), 3000); });
   }
   refreshContext() {
+    this.contextDirty = true;
     return this.job('context', async () => {
-      const [window, workspaces, active] = await Promise.all(['activewindow', 'workspaces', 'activeworkspace'].map(v => run('hyprctl', [v, '-j']).then(JSON.parse)));
-      const patch = { workspace: active.id, workspaces: workspaces.filter(w => w.id > 0).sort((a, b) => a.id - b.id).map(w => ({ id: w.id, name: /^\d+$/.test(w.name) ? w.id : w.name, windows: w.windows })) };
-      if (!this.editorFocused && !/marchybar/i.test(window.class || '')) { patch.app = window.class || ''; patch.title = window.title || ''; }
-      this.update(patch);
+      while (this.contextDirty && !this.stopped) {
+        this.contextDirty = false;
+        try {
+          const [window, workspaces, active] = await Promise.all(['activewindow', 'workspaces', 'activeworkspace'].map(v => run('hyprctl', [v, '-j']).then(JSON.parse)));
+          if (this.stopped || this.contextDirty) continue;
+          const patch = { workspace: active.id, workspaces: workspaces.filter(w => w.id > 0).sort((a, b) => a.id - b.id).map(w => ({ id: w.id, name: /^\d+$/.test(w.name) ? w.id : w.name, windows: w.windows })) };
+          if (!this.editorFocused && !/marchybar/i.test(window.class || '')) { patch.app = window.class || ''; patch.title = window.title || ''; }
+          this.update(patch);
+        } catch {}
+      }
     });
   }
   refreshAudio() {
@@ -139,7 +146,20 @@ export class Actions {
         case 'workspace': await run('hyprctl', ['dispatch', `hl.dsp.focus({ workspace = "${action.workspace}" })`]); break;
         case 'launch': {
           const roots = [path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'), 'applications'), ...(process.env.XDG_DATA_DIRS || '/usr/local/share:/usr/share').split(':').map(p => path.join(p, 'applications'))];
-          const file = roots.map(p => path.join(p, action.desktop)).find(p => fs.existsSync(p));
+          const resolve = (dir, id) => {
+            const direct = path.join(dir, id);
+            try { if (fs.statSync(direct).isFile()) return direct; } catch {}
+            // A dash can belong to a filename or represent a subdirectory separator.
+            for (let i = id.indexOf('-'); i >= 0; i = id.indexOf('-', i + 1)) {
+              if (i === 0 || ['.', '..'].includes(id.slice(0, i))) continue;
+              const subdir = path.join(dir, id.slice(0, i));
+              try { if (!fs.statSync(subdir).isDirectory()) continue; } catch { continue; }
+              const file = resolve(subdir, id.slice(i + 1));
+              if (file) return file;
+            }
+          };
+          let file;
+          for (const root of roots) { file = resolve(root, action.desktop); if (file) break; }
           if (!file) throw new Error('Application is not installed');
           await run('gio', ['launch', file]); break;
         }
