@@ -79,6 +79,14 @@ Item {
     if (pluginRoot && !daemon.running && !connected) daemon.running = true
   }
   function setupSystem() { setup.running = true }
+  function updateSystem(withOmarchy) {
+    // The terminal must outlive this service when the update restarts the shell.
+    var command = ["setsid", "uwsm-app", "--", "xdg-terminal-exec", "--app-id=org.omarchy.terminal", "--title=MarchyBar Update", "-e",
+      "/bin/bash", "-c", '/bin/bash "$@"; status=$?; read -r -p "Press Enter to close."; exit "$status"',
+      "marchybar-update", root.pluginRoot + "/bin/marchybar", "update"]
+    if (withOmarchy) command.push("--with-omarchy")
+    Quickshell.execDetached(command)
+  }
 
   Process {
     id: daemon
