@@ -7,7 +7,7 @@ import stat
 import sys
 
 HELPER = Path('/usr/lib/marchybar-system/setup-helper')
-EXPECTED_SHA256 = 'a998950fa104fb601643665fde7cda963e6a8ea87379ac26a98e9c8c9c8c33b6'
+EXPECTED_SHA256 = 'ad1c70abc40333cfbdfce174a346e429d8dd0d57948a127c63f96dbfca6e18ef'
 
 def main():
     if sys.argv[1:] not in [['setup'], ['remove']]:

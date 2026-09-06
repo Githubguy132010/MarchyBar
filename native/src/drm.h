@@ -16,6 +16,7 @@ public:
   void setup();
 
   uint8_t*  buffer()       const { return map_; }
+  // Visible scanout dimensions, not the dumb buffer's padded allocation.
   uint32_t  fb_width()     const { return fb_width_; }
   uint32_t  fb_height()    const { return fb_height_; }
   uint32_t  stride()       const { return stride_; }
@@ -39,5 +40,7 @@ private:
   uint64_t  map_size_  = 0;
   uint8_t*  map_       = nullptr;
   bool      rotate90_  = false;
+  bool      is_adp_    = false;
+  bool      active_    = false;
   drmModeModeInfo mode_{};
 };

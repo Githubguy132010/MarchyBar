@@ -10,7 +10,7 @@ Omarchy shell (Quickshell)
                                      └─ native DRM + Cairo + evdev
                                              ↑ device lease
                                      Python device helper (systemd)
-                                             └─ specific T2 USB mode / ACL / backlight
+                                             └─ T2 USB or Asahi ADP / ACL / backlight
 ```
 
 The shell uses Omarchy's actual `qs.Ui` controls and `qs.Commons` theme tokens. It keeps an editable draft separate from persisted state. The background service supplies a lock/idle heartbeat and reconnects by recreating the Quickshell socket after failed connections. This handles the [Quickshell socket implementation](https://github.com/quickshell-mirror/quickshell/blob/master/src/io/socket.cpp), which retains its failed underlying `QLocalSocket`.
@@ -20,6 +20,10 @@ The session backend owns configuration, layout selection, drawing, hit testing, 
 The root helper accepts four operations: acquire, release, brightness, and ping. It authenticates Unix peer credentials against an active local logind user session. One connection owns one lease. It switches only USB 05ac:8302, waits for the custom DRM/touch nodes and udev completion, records ACLs, and grants narrowly scoped temporary access. It restores the exact original ACL when the same device inode still exists, then the previous USB mode and backlight. A root-owned runtime journal supports recovery after a helper crash. An active renderer or competing tiny-dfr/touchbard process is rejected.
 
 Logind's `PrepareForSleep` signal is coordinated with a delay inhibitor. The helper tells the session renderer to close its file descriptors before restoring the firmware mode and releasing the inhibitor. It never unloads the T2 bridge. The backend retries hardware acquisition after recovery; a sleeping helper rejects acquisition. Locking or losing the shell heartbeat closes the custom renderer and returns firmware controls. On unlock the saved enabled preference reconnects MarchyBar.
+
+The USB and firmware behavior above applies only to T2. The experimental Asahi profile recognizes J293/J493 through device-tree compatibles and verifies ADP display, Z2 touch, and Summit backlight identities. It never switches USB modes or unloads drivers. Its versioned journal records the model and backlight identity; recovery blanks the panel before restoring journaled ACLs. There is no firmware function-row fallback. Disable, lock, session loss, and sleep leave the bar dark. Renderer shutdown also attempts to clear and disable ADP scanout. `tiny-dfr` handoff is explicit and requires helper removal to restore distro device permissions.
+
+These are cooperative userspace access leases, not kernel DRM leases. Restoring an ACL does not revoke an already-open descriptor. The renderer must close its DRM and input descriptors on release; the helper's Asahi blanking provides an additional privacy measure, not descriptor revocation. See [Apple Silicon research and testing](APPLE-SILICON.md) for unresolved hardware checks.
 
 ## Selection and interaction
 

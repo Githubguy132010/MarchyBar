@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Githubguy132010",
   "license": "GPL-3.0-or-later",
-  "description": "Your Touch Bar, at home in Omarchy. Editable presets, live controls and automatic app layouts for Intel T2 Macs.",
+  "description": "Editable Touch Bar presets and live controls for Intel T2 Macs, with experimental M1/M2 support on Omarchy.",
   "kinds": ["bar-widget", "panel", "service"],
   "keepLoaded": true,
   "entryPoints": {

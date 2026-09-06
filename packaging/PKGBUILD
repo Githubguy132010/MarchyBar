@@ -8,7 +8,7 @@ arch=('any')
 license=('GPL-3.0-or-later')
 depends=('python' 'python-gobject' 'bash' 'polkit' 'systemd' 'acl')
 source=('install-system.sh' 'device-broker.py' 'marchybar-device.service' '90-marchybar.rules' 'setup-helper' 'org.marchybar.system.policy')
-sha256sums=('4a70f10820534a6aeb3aa5f79bb180d683f5cde23a4223d50e24d7e2f134873a' '7addc1e2c37aa098622b96f5b0afa4b0189ff54b538cad50b77b59d99ead839e' 'f5a2a3401bf6edffd6d1623606e741dbe8967a1f10420d0ec2540678ac8b16cd' '42b0e793f1f17b4cb992e2348fcac16dca353b76faad452a0348bb02e440ee78' 'a998950fa104fb601643665fde7cda963e6a8ea87379ac26a98e9c8c9c8c33b6' '29d6dcf145f75bfe310ad565410d1b2f56139287f007931e588c4afc7f5b5da8')
+sha256sums=('b65254f0b479669a6f4a6ce384268bba7ccec8733eb80f0cb3b518c628b7d70b' '078779340e5aa300b93ca111795e3a14dbbac0e7b257d13f2ee57a5cfc2666bb' 'f5a2a3401bf6edffd6d1623606e741dbe8967a1f10420d0ec2540678ac8b16cd' 'de9153ae17d2c02f84b3918cc47aa2288ade0cffd6f111ea4028cfe384ce0d7d' 'ad1c70abc40333cfbdfce174a346e429d8dd0d57948a127c63f96dbfca6e18ef' '29d6dcf145f75bfe310ad565410d1b2f56139287f007931e588c4afc7f5b5da8')
 package() {
   install -dm755 "$pkgdir/usr/lib/marchybar-system"
   install -m755 setup-helper "$pkgdir/usr/lib/marchybar-system/setup-helper"

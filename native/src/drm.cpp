@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 DrmDevice::DrmDevice(const std::string& path) {
@@ -16,6 +17,14 @@ DrmDevice::DrmDevice(const std::string& path) {
 }
 
 DrmDevice::~DrmDevice() {
+  if (is_adp_) {
+    // Erase private content, including padding, before releasing scanout.
+    if (map_) memset(map_, 0, map_size_);
+    if (active_) {
+      dirty();
+      drmModeSetCrtc(fd_, crtc_id_, 0, 0, 0, nullptr, 0, nullptr);
+    }
+  }
   if (map_ && map_ != MAP_FAILED) munmap(map_, map_size_);
   if (fb_id_)   drmModeRmFB(fd_, fb_id_);
   if (handle_) {
@@ -27,6 +36,12 @@ DrmDevice::~DrmDevice() {
 }
 
 void DrmDevice::setup() {
+  drmVersion* version = drmGetVersion(fd_);
+  if (!version) throw std::runtime_error("drmGetVersion failed");
+  is_adp_ = version->name && version->name_len == 3 &&
+            std::memcmp(version->name, "adp", 3) == 0;
+  drmFreeVersion(version);
+
   drmModeRes* res = drmModeGetResources(fd_);
   if (!res) throw std::runtime_error("drmModeGetResources failed");
 
@@ -50,9 +65,19 @@ void DrmDevice::setup() {
   fb_width_  = mode_.hdisplay;
   fb_height_ = mode_.vdisplay;
 
+  if (is_adp_ && (fb_width_ != 60 || fb_height_ != 2008)) {
+    drmModeFreeConnector(conn);
+    drmModeFreeResources(res);
+    throw std::runtime_error("Unsupported adp mode " + std::to_string(fb_width_) +
+                             "x" + std::to_string(fb_height_) + "; expected 60x2008");
+  }
+  // ADP has no orientation property. Match tiny-dfr's +90 degree rotation:
+  // pixel (logical_x, logical_y) maps to (59 - logical_y, logical_x).
+  rotate90_ = is_adp_;
+
   // Detect panel orientation: values 2 (Left Side Up) and 3 (Right Side Up)
   // mean the panel is physically rotated 90°; swap logical width/height.
-  for (int i = 0; i < conn->count_props; ++i) {
+  for (int i = 0; !is_adp_ && i < conn->count_props; ++i) {
     drmModePropertyRes* prop = drmModeGetProperty(fd_, conn->props[i]);
     if (!prop) continue;
     if (std::string(prop->name) == "panel orientation" && prop->count_enums > 0) {
@@ -91,9 +116,12 @@ void DrmDevice::setup() {
   if (!crtc_id_)
     throw std::runtime_error("No suitable CRTC found");
 
+  if (is_adp_ && drmIsMaster(fd_) != 1 && drmSetMaster(fd_) < 0)
+    throw std::runtime_error("Cannot acquire DRM master for adp");
+
   // --- Allocate a dumb buffer (CPU-accessible, no GBM needed) ---
   drm_mode_create_dumb creq{};
-  creq.width  = fb_width_;
+  creq.width  = is_adp_ ? 64 : fb_width_;
   creq.height = fb_height_;
   creq.bpp    = 32;
   if (drmIoctl(fd_, DRM_IOCTL_MODE_CREATE_DUMB, &creq) < 0)
@@ -102,6 +130,14 @@ void DrmDevice::setup() {
   handle_   = creq.handle;
   stride_   = creq.pitch;
   map_size_ = creq.size;
+
+  // ADP may return a 2048-row allocation. Use its pitch and full size, while
+  // keeping KMS and the renderer at the visible 60x2008 dimensions.
+  if (is_adp_ && (stride_ < 64 * 4 || stride_ % 4 != 0 ||
+                 creq.height < fb_height_ ||
+                 map_size_ < uint64_t(stride_) * creq.height ||
+                 map_size_ > std::numeric_limits<size_t>::max()))
+    throw std::runtime_error("Invalid adp dumb buffer allocation");
 
   // --- Register it as a KMS framebuffer (XRGB8888) ---
   if (drmModeAddFB(fd_, fb_width_, fb_height_, 24, 32, stride_, handle_, &fb_id_) < 0)
@@ -124,8 +160,11 @@ void DrmDevice::setup() {
   memset(map_, 0, map_size_);
 
   // --- Activate the display ---
+  // ADP's atomic helpers may support legacy KMS. Visible AddFB dimensions and
+  // SetCrtc/dirty/disable still need validation on physical ADP hardware.
   if (drmModeSetCrtc(fd_, crtc_id_, fb_id_, 0, 0, &conn_id_, 1, &mode_) < 0)
     throw std::runtime_error("drmModeSetCrtc failed — display may be in use by a compositor");
+  active_ = true;
 }
 
 void DrmDevice::dirty(const drmModeClip* clips, uint32_t count) {
