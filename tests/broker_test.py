@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from setup_test import SetupTest
+from system_action_test import SystemActionTest
 
 spec = importlib.util.spec_from_file_location('broker', Path(__file__).parents[1] / 'packaging/device-broker.py')
 broker = importlib.util.module_from_spec(spec)

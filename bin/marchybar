@@ -52,9 +52,9 @@ case "$action" in
   daemon) prepare; exec node "$MARCHYBAR_ROOT/backend/server.mjs" "$@" ;;
   preview) prepare; exec node "$MARCHYBAR_ROOT/backend/server.mjs" --preview "$@" ;;
   open) exec omarchy-shell shell summon marchybar.touchbar '{}' ;;
-  setup) exec pkexec /bin/bash "$MARCHYBAR_ROOT/packaging/install-system.sh" ;;
+  setup) exec /usr/bin/python3 -I "$MARCHYBAR_ROOT/bin/system-action.py" setup "$@" ;;
   update) exec /bin/bash "$MARCHYBAR_ROOT/bin/update.sh" "$@" ;;
-  uninstall-system) exec pkexec /bin/bash "$MARCHYBAR_ROOT/packaging/install-system.sh" --remove ;;
+  uninstall-system) exec /usr/bin/python3 -I "$MARCHYBAR_ROOT/bin/system-action.py" remove "$@" ;;
   help|--help|-h)
     cat <<'HELP'
 MarchyBar — native Omarchy Touch Bar configuration
