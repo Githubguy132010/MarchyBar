@@ -1,0 +1,58 @@
+#!/usr/bin/python3 -I
+"""Fixed-scope system setup; deployed only through the administrator's package manager."""
+import hashlib
+import os
+from pathlib import Path
+import stat
+import sys
+
+ROOT = Path('/usr/lib/marchybar-system')
+PAYLOAD = {'install-system.sh': '4a70f10820534a6aeb3aa5f79bb180d683f5cde23a4223d50e24d7e2f134873a', 'device-broker.py': '7addc1e2c37aa098622b96f5b0afa4b0189ff54b538cad50b77b59d99ead839e', 'marchybar-device.service': 'f5a2a3401bf6edffd6d1623606e741dbe8967a1f10420d0ec2540678ac8b16cd', '90-marchybar.rules': '42b0e793f1f17b4cb992e2348fcac16dca353b76faad452a0348bb02e440ee78'}
+
+def trusted(path, executable=False):
+    path = Path(path)
+    for item in [*reversed(path.parents), path]:
+        info = item.lstat()
+        if stat.S_ISLNK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError(f'Untrusted system path: {item}')
+        if item != path and not stat.S_ISDIR(info.st_mode):
+            raise ValueError(f'Not a directory: {item}')
+    if not stat.S_ISREG(info.st_mode) or (executable and not info.st_mode & 0o111):
+        raise ValueError(f'Invalid system file: {path}')
+    return path
+
+def main():
+    if os.geteuid() != 0 or sys.argv[1:] not in [['setup'], ['remove']]:
+        raise ValueError('Expected authenticated setup or remove, with no other arguments')
+    if Path(__file__) != ROOT / 'setup-helper':
+        raise ValueError('Helper must be installed by the system package manager')
+    trusted(__file__, executable=True)
+    for name, digest in PAYLOAD.items():
+        file = trusted(ROOT / name)
+        if hashlib.sha256(file.read_bytes()).hexdigest() != digest:
+            raise ValueError(f'Helper payload integrity mismatch: {name}')
+    trusted('/usr/bin/bash', executable=True)
+    # Fail closed on writable/symlinked destination ancestors or existing files.
+    for name in ['/usr/local/lib/marchybar/device-broker.py',
+                 '/etc/systemd/system/marchybar-device.service',
+                 '/etc/udev/rules.d/90-marchybar.rules']:
+        file = Path(name)
+        for item in [*reversed(file.parents), file]:
+            if not item.exists() and not item.is_symlink():
+                continue
+            info = item.lstat()
+            if stat.S_ISLNK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                raise ValueError(f'Untrusted destination: {item}')
+    os.chdir('/')
+    os.umask(0o077)
+    args = ['/usr/bin/bash', '--noprofile', '--norc', str(ROOT / 'install-system.sh')]
+    if sys.argv[1] == 'remove':
+        args.append('--remove')
+    os.execve(args[0], args, {'PATH': '/usr/bin:/bin', 'LANG': 'C'})
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError) as error:
+        print(f'MarchyBar setup refused: {error}', file=sys.stderr)
+        sys.exit(1)
