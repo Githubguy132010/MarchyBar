@@ -2,7 +2,9 @@
 # Installs only the device-specific helper. The renderer always runs as the user.
 set -euo pipefail
 [[ $EUID == 0 ]] || { echo 'Run marchybar setup from the editor or command line.' >&2; exit 1; }
-MARCHYBAR_PACKAGE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+export PATH=/usr/bin:/bin
+MARCHYBAR_PACKAGE=/usr/lib/marchybar-system
+[[ $# == 0 || ( $# == 1 && $1 == --remove ) ]] || { echo 'Unknown setup argument' >&2; exit 1; }
 if [[ ${1:-} == --remove ]]; then
   helper_state() {
     local properties key value

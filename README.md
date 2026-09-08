@@ -40,9 +40,22 @@ omarchy plugin add https://github.com/Githubguy132010/MarchyBar --enable
 
 The first public release is **v0.1.0**. See [releases](https://github.com/Githubguy132010/MarchyBar/releases) for changes.
 
-Click **▰** in the Omarchy bar. The first launch builds a small native renderer in your user cache; subsequent launches reuse it. Open **Device → Set up Touch Bar**, authenticate the one-time helper installation, and enable the bar. An existing `tiny-dfr` or `touchbard` process must be stopped before enabling MarchyBar.
+Click **▰** in the Omarchy bar. The first launch builds a small native renderer in your user cache; subsequent launches reuse it. Install the trusted system package described below, then open **Device → Set up Touch Bar**, authenticate the device configuration, and enable the bar. An existing `tiny-dfr` or `touchbard` process must be stopped before enabling MarchyBar.
 
-The plugin's standard Omarchy installation never executes a privileged hook. The separate setup installs exactly:
+### Install the protected system helper
+
+The plugin cannot bootstrap privileged code from its user-writable checkout. An administrator must first install a matching, independently trusted `marchybar-system` package. No published signed binary package is provided yet. For a local build, obtain and review a separate source snapshot, review `packaging/PKGBUILD` and its inputs, then build as an ordinary user:
+
+```sh
+cd packaging
+makepkg
+```
+
+Have the administrator install the reviewed package with `pacman -U /path/to/marchybar-system-0.1.0-1-any.pkg.tar.zst`. Do not use the live plugin checkout as a trusted source or run its installer with sudo/pkexec. Local checksums bind the reviewed inputs; they do not authenticate an untrusted download or protect a compromised build session.
+
+The package installs root-owned files under `/usr/lib/marchybar-system/` and a dedicated policy at `/usr/share/polkit-1/actions/org.marchybar.system.policy`. Package installation does not start the service. Setup accepts only `setup` or `remove`, checks the helper's canonical path, ownership, mode and SHA-256 before calling `/usr/bin/pkexec`, and requires fresh administrator authentication for an active session. The protected helper verifies its fixed payload hashes and never reads code from the plugin checkout. Python runs in isolated mode and the privileged shell receives a fixed environment.
+
+The plugin's standard Omarchy installation never executes a privileged hook. The separate setup deploys exactly:
 
 - `/usr/local/lib/marchybar/device-broker.py`
 - `/etc/systemd/system/marchybar-device.service`
@@ -105,7 +118,7 @@ Use **Device → Update MarchyBar** or `marchybar update` for repository updates
 
 When the plugin revision changes, MarchyBar restarts the shell to load the new code. An enabled Touch Bar returns after the session unlocks; an intentionally disabled bar stays disabled. If the shell cannot restart, the updater reports the pending restart and the command to run after unlocking. A failed plugin update or restart stops the combined workflow. Omarchy may restart the shell again or offer a reboot. Updates run directly through `omarchy plugin update` still need a shell restart to replace MarchyBar's retained service.
 
-If a release changes the device helper, run **Set up Touch Bar** again. Updates never install privileged helper files automatically. The source, preset, and control protocol versions are explicit.
+If a release changes the device helper, have the administrator install the matching reviewed system package, then run **Set up Touch Bar** again. Mismatched helper hashes fail closed. Updates never install privileged helper files automatically. The source, preset, and control protocol versions are explicit.
 
 ## Disable or uninstall
 
@@ -117,6 +130,8 @@ marchybar uninstall-system
 omarchy plugin remove marchybar.touchbar --yes
 ```
 
+After `uninstall-system` succeeds, the administrator may remove `marchybar-system` with the package manager. Keep the package installed until device cleanup succeeds.
+
 User presets are deliberately retained. Remove `~/.config/marchybar` separately only if you want to erase them.
 
 ## Development
@@ -126,6 +141,7 @@ npm ci --ignore-scripts
 npm run build
 npm test
 python tests/broker_test.py
+python tests/system_action_test.py
 tests/test-qml.sh
 ```
 
