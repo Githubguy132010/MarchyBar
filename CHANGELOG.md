@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Restore backend startup and setup/update paths on Omarchy 4.0.3 by resolving the plugin directory relative to its QML file.
+- Read lock state through public IPC, preserving fail-closed behavior when the shell is unavailable, instead of accessing its now-private authentication service.
+
 ## 0.1.0 — 2026-09-05
 
 First public release of MarchyBar for Omarchy on Intel T2 MacBook Pro computers.

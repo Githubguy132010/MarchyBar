@@ -2,6 +2,12 @@
 
 Snapshot: 5 September 2026. This is a working first implementation, not a claim that eight physical machines were tested.
 
+## Omarchy 4.0.3 compatibility — 9 September 2026
+
+Omarchy 4.0.3 removes private source metadata from plugin manifests and no longer exposes the lock authentication service to third-party plugins. MarchyBar now resolves its own directory from its QML URL and reads the public `omarchy-shell lock isLocked` endpoint. Lock state is checked every 250 ms; failed or malformed responses fail closed, as does a sample older than 1.5 seconds. This is polling, so it does not provide synchronous lock-event delivery.
+
+Validated locally with Omarchy 4.0.3-1 and Quickshell 0.3.1-1: native build, 108 Node tests, 39 Python broker/setup/security tests, existing editor/QML regressions, and a new isolated test loading the actual Service with a public manifest and stub backend. The new test checks startup from a directory containing spaces, percent and Unicode characters, lock/unlock responses, query failures, invalid output, and stale-query protection. The live public lock endpoint also returned the expected unlocked state. No plugin reinstall, physical Touch Bar test, or desktop lock/unlock cycle was performed for this change.
+
 ## Verified environment
 
 - MacBookPro15,1 (Intel T2, on-screen Escape)
@@ -48,6 +54,6 @@ tests/test-qml.sh
 systemd-analyze verify packaging/marchybar-device.service
 ```
 
-`tests/test-qml.sh` starts an isolated Quickshell configuration using the installed Omarchy controls. It does not load the real service, lease hardware, or write user presets. The standard `qmltestrunner` cannot load Quickshell's statically linked plugin, so the harness runs in Quickshell itself. A known unrelated portal registration warning may appear.
+`tests/test-qml.sh` starts an isolated Quickshell configuration using the installed Omarchy controls. Its service integration test loads the real QML service with a stub backend, isolated runtime socket, and simulated lock responses. It does not lease hardware or write user presets. The standard `qmltestrunner` cannot load Quickshell's statically linked plugin, so the harness runs in Quickshell itself. A known unrelated portal registration warning may appear.
 
 For linting, map `qs/Commons` and `qs/Ui` to the installed Omarchy source in a temporary import directory, then pass it to `/usr/lib/qt6/bin/qmllint -I`. Qt's static type information does not describe some Omarchy dynamic theme properties or `QProcess::ExitStatus`; native runtime tests cover those bindings. No syntax/property-override errors are accepted.
