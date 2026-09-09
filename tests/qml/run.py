@@ -20,10 +20,13 @@ def function(source, name):
     return source[start:end]
 
 
-with tempfile.TemporaryDirectory(prefix="marchybar-qml-") as directory:
+with tempfile.TemporaryDirectory(prefix="marchybar qml %-そこ-") as directory:
     target = Path(directory)
-    for name in ["Editor.qml", "SettingNumber.qml"]:
+    for name in ["Editor.qml", "SettingNumber.qml", "Service.qml", "LockState.qml"]:
         (target / name).write_bytes((ROOT / name).read_bytes())
+    (target / "bin").mkdir()
+    (target / "bin/marchybar").write_text('#!/bin/bash\nprintf "MARCHYBAR_STUB_%s\\n" "$1" >&2\n')
+    (target / "runtime").mkdir(mode=0o700)
     omarchy = Path(os.environ.get("OMARCHY_PATH", "/usr/share/omarchy"))
     for name in ["Commons", "Ui"]:
         (target / name).symlink_to(omarchy / "shell" / name)
@@ -31,10 +34,10 @@ with tempfile.TemporaryDirectory(prefix="marchybar-qml-") as directory:
     harness = (ROOT / "tests/qml/service-harness.qml").read_text()
     harness = harness.replace("// PRODUCT_FUNCTIONS", "\n".join(function(source, name) for name in ["request", "receive", "reconnect"]))
     (target / "ServiceHarness.qml").write_text(harness)
-    for name in ["editor-harness.qml", "regressions.qml"]:
+    for name in ["editor-harness.qml", "regressions.qml", "service-integration.qml"]:
         (target / "shell.qml").write_bytes((ROOT / "tests/qml" / name).read_bytes())
         try:
-            result = subprocess.run(["qs", "-p", directory, "--no-color"], env={**os.environ, "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software"}, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)
+            result = subprocess.run(["qs", "-p", directory, "--no-color"], env={**os.environ, "XDG_RUNTIME_DIR": str(target / "runtime"), "MARCHYBAR_TEST_ROOT": directory, "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software"}, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)
         except subprocess.TimeoutExpired as error:
             print((error.stdout or b"").decode(errors="replace"))
             raise SystemExit("QML tests timed out") from error

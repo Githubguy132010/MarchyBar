@@ -21,9 +21,11 @@ Item {
   property string previewPath: ""
   property int nextId: 1
   property var pending: ({})
-  readonly property string pluginRoot: manifest ? manifest.__sourceDir : ""
+  // Omarchy 4.0.3 supplies a public manifest without private source metadata.
+  readonly property string pluginRoot: decodeURIComponent(String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "")).replace(/\/$/, "")
   readonly property string socketPath: Quickshell.env("XDG_RUNTIME_DIR") + "/marchybar/control.sock"
-  readonly property var lockService: shell ? shell.firstPartyServiceFor("omarchy.lock") : null
+  readonly property var lockService: sessionLockState
+  LockState { id: sessionLockState }
   signal responseError(string message)
   signal frameReady()
   IpcHandler {
