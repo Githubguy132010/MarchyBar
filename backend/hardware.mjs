@@ -11,7 +11,16 @@ export function diagnose() {
   const kernel = read('/proc/sys/kernel/osrelease');
   const broker = fs.existsSync('/run/marchybar/device.sock');
   const driver = fs.existsSync(`/usr/lib/modules/${kernel}/kernel/drivers/gpu/drm/tiny/appletbdrm.ko.zst`) || fs.existsSync('/sys/module/appletbdrm');
-  return { model, kernel, supported: MODELS.includes(model), driver, broker, status: !MODELS.includes(model) ? 'preview-only' : !broker ? 'setup-required' : 'available' };
+  const supported = MODELS.includes(model);
+  // Omarchy 4.0.4 migrates non-T2 machines to linux-omarchy but keeps T2 Macs
+  // on linux-t2. appletbdrm only ships with the T2 kernel, so a supported
+  // model booted into any other kernel cannot drive the Touch Bar.
+  const t2Kernel = /-t2(\.|-|_|$)/i.test(kernel);
+  const expectedKernel = 'linux-t2';
+  const kernelNote = !supported ? '' : t2Kernel ? '' :
+    `Running kernel ${kernel || 'unknown'} is not the T2 kernel. Omarchy 4.0.4 keeps T2 Macs on ${expectedKernel}; boot ${expectedKernel} (check Limine BOOT_ORDER) and ensure ${expectedKernel}-headers is installed, then retry.`;
+  const status = !supported ? 'preview-only' : !t2Kernel ? 'wrong-kernel' : !broker ? 'setup-required' : 'available';
+  return { model, kernel, supported, driver, broker, t2Kernel, expectedKernel, kernelNote, status };
 }
 
 export class Device {
