@@ -8,6 +8,7 @@ import { PROTOCOL_VERSION, TYPES, CHANNELS, validatePreset, selectPreset, DEFAUL
 import { scene, normalizeTheme, Gesture } from './scene.mjs';
 import { LiveData, Actions, run } from './live.mjs';
 import { Device, Preview, diagnose } from './hardware.mjs';
+import { VERSION } from './version.mjs';
 
 export const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const DEFAULT_SOCKET = path.join(process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`, 'marchybar', 'control.sock');
@@ -224,7 +225,7 @@ export class MarchyBar {
       }
       case 'hardware.enable': await this.enableHardware(); return true;
       case 'hardware.disable': await this.disableHardware(); return true;
-      case 'diagnostics': return { ...diagnose(), node: process.version, protocol: PROTOCOL_VERSION, backend: '0.1.0', geometry: this.geometry, status: this.status, errors: this.store.errors, error: this.error };
+      case 'diagnostics': return { ...diagnose(), node: process.version, protocol: PROTOCOL_VERSION, backend: VERSION, geometry: this.geometry, status: this.status, errors: this.store.errors, error: this.error };
       case 'simulate': {
         if (!this.previewOnly) throw new Error('Simulation is available only in a preview-only instance');
         if (params.data) this.live.update(params.data);
