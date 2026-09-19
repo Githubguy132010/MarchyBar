@@ -38,7 +38,7 @@ Install MarchyBar:
 omarchy plugin add https://github.com/Githubguy132010/MarchyBar --enable
 ```
 
-The current release is **v1.0.0**. See [releases](https://github.com/Githubguy132010/MarchyBar/releases) for changes.
+The current release is **v1.0.1**. See [releases](https://github.com/Githubguy132010/MarchyBar/releases) for changes.
 
 Click **▰** in the Omarchy bar. The first launch builds a small native renderer in your user cache; subsequent launches reuse it. Install the trusted system package described below, then open **Device → Set up Touch Bar**, authenticate the device configuration, and enable the bar. An existing `tiny-dfr` or `touchbard` process must be stopped before enabling MarchyBar.
 
@@ -51,7 +51,7 @@ cd packaging
 makepkg
 ```
 
-Have the administrator install the reviewed package with `pacman -U /path/to/marchybar-system-1.0.0-1-any.pkg.tar.zst`. Do not use the live plugin checkout as a trusted source or run its installer with sudo/pkexec. Local checksums bind the reviewed inputs; they do not authenticate an untrusted download or protect a compromised build session.
+Have the administrator install the reviewed package with `pacman -U /path/to/marchybar-system-1.0.1-1-any.pkg.tar.zst`. Do not use the live plugin checkout as a trusted source or run its installer with sudo/pkexec. Local checksums bind the reviewed inputs; they do not authenticate an untrusted download or protect a compromised build session.
 
 The package installs root-owned files under `/usr/lib/marchybar-system/` and a dedicated policy at `/usr/share/polkit-1/actions/org.marchybar.system.policy`. Package installation does not start the service. Setup accepts only `setup` or `remove`, checks the helper's canonical path, ownership, mode and SHA-256 before calling `/usr/bin/pkexec`, and requires fresh administrator authentication for an active session. The protected helper verifies its fixed payload hashes and never reads code from the plugin checkout. Python runs in isolated mode and the privileged shell receives a fixed environment.
 

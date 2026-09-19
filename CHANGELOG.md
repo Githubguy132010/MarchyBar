@@ -4,6 +4,10 @@ All notable changes to MarchyBar are documented here. This project follows [Sema
 
 ## Unreleased
 
+## 1.0.1 — 2026-09-19
+
+- Correct the plugin author metadata to the repository owner (`Githubguy132010`) so the marketplace listing attributes MarchyBar correctly.
+
 ## 1.0.0 — 2026-09-19
 
 First stable release. The release version now follows Semantic Versioning, with `package.json` as the single source of truth mirrored into the plugin manifest and the system package.

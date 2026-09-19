@@ -1,6 +1,6 @@
 {
   "name": "marchybar",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Native Omarchy Touch Bar presets and live controls for Intel T2 Macs",
   "type": "module",
