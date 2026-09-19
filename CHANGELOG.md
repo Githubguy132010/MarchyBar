@@ -1,10 +1,17 @@
 # Changelog
 
+All notable changes to MarchyBar are documented here. This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## Unreleased
+
+## 1.0.0 — 2026-09-19
+
+First stable release. The release version now follows Semantic Versioning, with `package.json` as the single source of truth mirrored into the plugin manifest and the system package.
 
 - Support Omarchy 4.0.4: T2 Macs stay on `linux-t2` while other machines move to `linux-omarchy`. Hardware diagnostics now detect a non-T2 kernel on supported models, report a `wrong-kernel` status with a boot/`linux-t2-headers` recovery hint, and refuse hardware enablement until the T2 kernel is running. The editor surfaces the note in the Device tab.
 - Restore backend startup and setup/update paths on Omarchy 4.0.3 by resolving the plugin directory relative to its QML file.
 - Read lock state through public IPC, preserving fail-closed behavior when the shell is unavailable, instead of accessing its now-private authentication service.
+- Add `npm run version:bump`/`npm run version:check` tooling, enforce version consistency in CI, and publish GitHub releases from `vX.Y.Z` tags.
 
 ## 0.1.0 — 2026-09-05
 
