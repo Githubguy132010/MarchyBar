@@ -48,8 +48,8 @@ function fixture(t, { failBrightness = false, failPersistence = false, wakeDurin
     return geometry;
   });
   const read = fs.readFileSync.bind(fs), exists = fs.existsSync.bind(fs);
-  t.mock.method(fs, 'readFileSync', (file, ...args) => file === '/sys/devices/virtual/dmi/id/product_name' ? 'MacBookPro15,1' : file === '/proc/sys/kernel/osrelease' ? 'fixture-kernel' : read(file, ...args));
-  t.mock.method(fs, 'existsSync', file => file === '/run/marchybar/device.sock' || file === '/sys/module/appletbdrm' ? true : file === 'fixture:control' || String(file).startsWith('/usr/lib/modules/fixture-kernel/') ? false : exists(file));
+  t.mock.method(fs, 'readFileSync', (file, ...args) => file === '/sys/devices/virtual/dmi/id/product_name' ? 'MacBookPro15,1' : file === '/proc/sys/kernel/osrelease' ? '7.2.5-arch1-T2' : read(file, ...args));
+  t.mock.method(fs, 'existsSync', file => file === '/run/marchybar/device.sock' || file === '/sys/module/appletbdrm' ? true : file === 'fixture:control' || String(file).startsWith('/usr/lib/modules/7.2.5-arch1-T2/') ? false : exists(file));
   class Socket extends EventEmitter {
     destroyed = false;
     constructor() { super(); queueMicrotask(() => this.emit('connect')); }

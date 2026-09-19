@@ -2,6 +2,14 @@
 
 Snapshot: 5 September 2026. This is a working first implementation, not a claim that eight physical machines were tested.
 
+## Omarchy 4.0.4 compatibility — 19 September 2026
+
+Omarchy 4.0.4 ships the bespoke `linux-omarchy` kernel for most machines but explicitly keeps T2 Macs on `linux-t2`, guarantees matching `linux-t2-headers`, and orders Limine `BOOT_ORDER` with `linux-t2` first. No plugin API changes ship in v4.0.3…v4.0.4, so the 4.0.3 service-startup and public lock-IPC fixes carry over unchanged.
+
+MarchyBar now treats a non-T2 kernel on a supported model as a distinct `wrong-kernel` state instead of a generic setup issue: diagnostics report `t2Kernel`, `expectedKernel`, and an actionable `kernelNote` (boot `linux-t2`, check `BOOT_ORDER`, ensure `linux-t2-headers` is installed), hardware enablement refuses until the T2 kernel runs, and the editor shows the note in the Device tab with a "Wrong kernel" status label.
+
+Validated without T2 hardware via `npm test` (including the new `tests/kernel-compatibility.test.mjs`: T2-kernel availability, `linux-omarchy`/generic-kernel refusal with recovery hints, unsupported-model preview-only behavior, and `hardware.enable` rejection on the wrong kernel). No physical Touch Bar test, desktop lock/unlock cycle, or clean-install migration run was performed for this change.
+
 ## Omarchy 4.0.3 compatibility — 9 September 2026
 
 Omarchy 4.0.3 removes private source metadata from plugin manifests and no longer exposes the lock authentication service to third-party plugins. MarchyBar now resolves its own directory from its QML URL and reads the public `omarchy-shell lock isLocked` endpoint. Lock state is checked every 250 ms; failed or malformed responses fail closed, as does a sample older than 1.5 seconds. This is polling, so it does not provide synchronous lock-event delivery.
