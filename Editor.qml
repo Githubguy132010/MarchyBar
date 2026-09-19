@@ -251,7 +251,7 @@ Item {
           Hint { text: "Your Touch Bar, at home in Omarchy." }
         }
         Item { Layout.fillWidth: true }
-        Label { text: root.model.status === "ready" ? "● Connected" : "○ " + (({starting:"Starting", "setup-required":"Preview", "preview-only":"Preview", preview:"Preview", available:"Preview",disabled:"Disabled",recovering:"Reconnecting",error:"Needs attention",locked:"Desktop locked"})[root.model.status] || "Starting"); color: root.model.status === "ready" ? Color.accent : Color.muted }
+          Label { text: root.model.status === "ready" ? "● Connected" : "○ " + (({starting:"Starting", "setup-required":"Preview", "preview-only":"Preview", preview:"Preview", available:"Preview", "wrong-kernel":"Wrong kernel",disabled:"Disabled",recovering:"Reconnecting",error:"Needs attention",locked:"Desktop locked"})[root.model.status] || root.model.hardware.kernelNote || "Starting"); color: root.model.status === "ready" ? Color.accent : Color.muted }
         Button { text: "Automatic"; selected: Boolean(root.model.settings.automatic && !root.model.settings.pinnedPreset); onClicked: root.call("automatic",{}) }
       }
       RowLayout {
@@ -467,6 +467,7 @@ Item {
             width:parent.width; spacing:20
             Label { text:"Touch Bar"; font.bold:true; font.pixelSize:Style.font.heading }
             Label { text:(root.model.hardware.model || "Detecting hardware")+" · "+(root.model.hardware.kernel || ""); Layout.fillWidth:true }
+            Label { visible:Boolean(root.model.hardware.kernelNote); text:root.model.hardware.kernelNote || ""; color:Color.urgent; wrapMode:Text.Wrap; Layout.fillWidth:true }
             Hint { text:"The one-time device helper gives MarchyBar access only to the Touch Bar and the built-in keyboard for Fn and wake detection. Disabling restores the previous firmware mode."; Layout.fillWidth:true }
             RowLayout {
               Button { text:"Set up Touch Bar"; bordered:true; enabled:Boolean(root.service); onClicked:root.service.setupSystem() }

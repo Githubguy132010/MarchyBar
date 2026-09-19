@@ -117,6 +117,7 @@ export class MarchyBar {
     if (this.locked) { this.store.saveSettings({ hardwareEnabled: true }, this.store.revision); this.status = 'locked'; this.refresh(); return; }
     this.hardware = diagnose();
     if (!this.hardware.supported) throw new Error('This model is outside the Intel T2 MacBook Pro support target. Preview is available.');
+    if (!this.hardware.t2Kernel) throw new Error(this.hardware.kernelNote || 'Boot the linux-t2 kernel to use the Touch Bar. Omarchy 4.0.4 keeps T2 Macs on linux-t2.');
     if (!this.hardware.broker) throw new Error('Run MarchyBar setup to install the device helper');
     this.status = 'starting'; this.broadcastState();
     const device = new Device({ onInput: (...args) => this.input(...args), onFn: value => { this.fn = value; this.refresh(); }, onActivity: () => this.setIdle(false, false), onSleep: event => { this.disableHardware(false).then(() => { this.status = 'recovering'; this.retryAt = Date.now() + 10000; this.broadcastState(); }); }, onDisconnect: error => { this.disableHardware(false).then(() => { this.status = 'recovering'; this.fail(error); }); } });
