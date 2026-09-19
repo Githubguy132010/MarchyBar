@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "marchybar.touchbar",
   "name": "MarchyBar",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Githubguy132010",
   "license": "GPL-3.0-or-later",
   "description": "Your Touch Bar, at home in Omarchy. Editable presets, live controls and automatic app layouts for Intel T2 Macs.",
