@@ -46,6 +46,7 @@ The lock-lifecycle check exercised actual hardware release/reacquisition without
 
 ## Coverage still requiring additional hardware or a dedicated session
 
+- Experimental `MacBookPro17,1` and `Mac14,7`: no physical MarchyBar validation yet. Driver identity and geometry come from upstream sources; mocked DRM, device discovery, recovery, and lifecycle tests do not prove hardware operation. Follow the [Apple Silicon checklist](APPLE-SILICON.md#hardware-checklist).
 - Physical MacBookPro15,2, 15,3, 15,4, 16,1, 16,2, 16,3, and 16,4. Their identifiers are supported, and both geometries are tested; physical certification of these models is not claimed.
 - A full system suspend/resume, hibernate, logout/login, and lid-close cycle. Do these in a dedicated testing session rather than interrupting active work.
 - Long-duration power consumption, burn-in behavior, and repeated USB disconnect stress.

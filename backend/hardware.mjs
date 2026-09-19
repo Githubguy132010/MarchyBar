@@ -5,22 +5,45 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 export const native = require(process.env.MARCHYBAR_NATIVE_PATH || '../build/Release/drm_backend.node');
 export const MODELS = ['MacBookPro15,1', 'MacBookPro15,2', 'MacBookPro15,3', 'MacBookPro15,4', 'MacBookPro16,1', 'MacBookPro16,2', 'MacBookPro16,3', 'MacBookPro16,4'];
-const read = file => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; } };
-export function diagnose() {
-  const model = read('/sys/devices/virtual/dmi/id/product_name');
-  const kernel = read('/proc/sys/kernel/osrelease');
-  const broker = fs.existsSync('/run/marchybar/device.sock');
-  const driver = fs.existsSync(`/usr/lib/modules/${kernel}/kernel/drivers/gpu/drm/tiny/appletbdrm.ko.zst`) || fs.existsSync('/sys/module/appletbdrm');
-  const supported = MODELS.includes(model);
+const readSysfs = file => { try { return fs.readFileSync(file, 'utf8'); } catch (e) { return e.code === 'ENOENT' ? null : ''; } };
+export function diagnose({ read = readSysfs, exists = fs.existsSync, list = fs.readdirSync } = {}) {
+  let model = (read('/sys/devices/virtual/dmi/id/product_name') || '').trim();
+  let profile = null;
+  const compatible = read('/sys/firmware/devicetree/base/compatible');
+  // Only a missing DT property permits DMI fallback, matching the broker.
+  if (compatible === null) {
+    if (MODELS.includes(model)) profile = 't2';
+  } else if (compatible.endsWith('\0') && !/[^\x00-\x7f]/.test(compatible)) {
+    const values = compatible.slice(0, -1).split('\0');
+    const models = new Map([['apple,j293', 'MacBookPro17,1'], ['apple,j493', 'Mac14,7']]);
+    if (models.has(values[0]) && values.filter(value => models.has(value)).length === 1) {
+      model = models.get(values[0]); profile = 'asahi';
+    }
+  }
+  const kernel = (read('/proc/sys/kernel/osrelease') || '').trim();
+  const broker = exists('/run/marchybar/device.sock');
+  let driver = false;
+  if (profile === 'asahi') {
+    driver = exists('/sys/module/adpdrm');
+    // Built-in adp has no module entry. Require a bound device, not just registration.
+    if (!driver) {
+      try { driver = list('/sys/bus/platform/drivers/adp').some(name => exists(`/sys/bus/platform/drivers/adp/${name}/driver`)); } catch {}
+    }
+  } else {
+    driver = exists(`/usr/lib/modules/${kernel}/kernel/drivers/gpu/drm/tiny/appletbdrm.ko.zst`) || exists('/sys/module/appletbdrm');
+  }
+  // Recognition is not physical verification. The broker checks display, input and backlight.
+  const supported = profile !== null;
   // Omarchy 4.0.4 migrates non-T2 machines to linux-omarchy but keeps T2 Macs
-  // on linux-t2. appletbdrm only ships with the T2 kernel, so a supported
-  // model booted into any other kernel cannot drive the Touch Bar.
+  // on linux-t2. appletbdrm only ships with the T2 kernel, so a supported T2
+  // model booted into any other kernel cannot drive the Touch Bar. The Asahi
+  // profile uses its own in-tree drivers and is exempt from the T2 kernel rule.
   const t2Kernel = /-t2(\.|-|_|$)/i.test(kernel);
   const expectedKernel = 'linux-t2';
-  const kernelNote = !supported ? '' : t2Kernel ? '' :
+  const kernelNote = profile !== 't2' ? '' : t2Kernel ? '' :
     `Running kernel ${kernel || 'unknown'} is not the T2 kernel. Omarchy 4.0.4 keeps T2 Macs on ${expectedKernel}; boot ${expectedKernel} (check Limine BOOT_ORDER) and ensure ${expectedKernel}-headers is installed, then retry.`;
-  const status = !supported ? 'preview-only' : !t2Kernel ? 'wrong-kernel' : !broker ? 'setup-required' : 'available';
-  return { model, kernel, supported, driver, broker, t2Kernel, expectedKernel, kernelNote, status };
+  const status = !supported ? 'preview-only' : profile === 't2' && !t2Kernel ? 'wrong-kernel' : !broker ? 'setup-required' : 'available';
+  return { model, profile, experimental: profile === 'asahi', kernel, supported, driver, broker, t2Kernel, expectedKernel, kernelNote, status };
 }
 
 export class Device {
