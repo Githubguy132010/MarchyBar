@@ -1,0 +1,4 @@
+{
+  "name": "MarchyBar",
+  "install": "sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config libcairo2-dev libdrm-dev libpango1.0-dev librsvg2-dev libudev-dev && npm ci --ignore-scripts && npm run build"
+}
