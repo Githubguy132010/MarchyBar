@@ -126,13 +126,21 @@ export class LiveData extends EventEmitter {
 }
 
 export class Actions {
-  constructor({ live, onPreset, onPage, onEditor, onTouchbar, isLocked, isPreview, onError = () => {} }) { Object.assign(this, { live, onPreset, onPage, onEditor, onTouchbar, isLocked, isPreview, onError }); this.channels = new Map(); }
+  constructor({ live, onPreset, onPage, onEditor, onTouchbar, isLocked, isPreview, onPreview, onError = () => {} }) { Object.assign(this, { live, onPreset, onPage, onEditor, onTouchbar, isLocked, isPreview, onPreview, onError }); this.channels = new Map(); }
   async invoke(action) {
     if (this.isLocked()) return;
     try {
+      this.onPreview?.(action);
       if (action.type === 'preset') return this.onPreset(action.preset);
       if (action.type === 'page') return this.onPage(action.page);
       if (action.type === 'editor') return this.onEditor();
+      if (action.type === 'workspace' && this.isPreview()) { this.live.update({ workspace: action.workspace }); return; }
+      if (action.type === 'media' && this.isPreview()) {
+        const media = { ...(this.live.data.media || {}) };
+        if (action.command === 'play-pause') media.status = media.status === 'Playing' ? 'Paused' : 'Playing';
+        if (media.player) this.live.update({ media });
+        return;
+      }
       if (this.isPreview()) return;
       switch (action.type) {
         case 'key': {
@@ -176,7 +184,19 @@ export class Actions {
     } catch (e) { this.onError(e.message); }
   }
   slider(channel, value, final = false) {
-    if (this.isLocked() || this.isPreview()) return;
+    if (this.isLocked()) return;
+    const next = clamp(value, 0, 100);
+    if (this.isPreview()) {
+      this.onPreview?.({ type: 'slider', channel, value: Math.round(next) });
+      if (channel === 'touchbar') { this.onTouchbar?.(next, final); return; }
+      if (channel === 'seek') {
+        const media = this.live.data.media;
+        if (media?.length > 0) this.live.update({ media: { ...media, position: media.length * next / 100 } });
+        return;
+      }
+      if (channel === 'volume' || channel === 'brightness' || channel === 'keyboard') this.live.update({ [channel]: next });
+      return;
+    }
     // Serialize each output; retain the latest requested value while an earlier write runs.
     const state = this.channels.get(channel) || { running: false, pending: null };
     state.pending = { value: clamp(value, 0, 100), final }; this.channels.set(channel, state);

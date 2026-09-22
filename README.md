@@ -155,6 +155,14 @@ MARCHYBAR_SOCKET=/tmp/marchybar-dev/control.sock bin/marchybar status
 
 The normal daemon deliberately refuses simulation. Preview mode never leases devices or executes OS actions. Do not run the renderer as root. Omarchy rejects symlinks inside plugin packages, so `node_modules` and build output are excluded from Git and installed builds use an external cache.
 
+Open the same renderer as an on-screen Touch Bar when no T2 panel is attached:
+
+```sh
+bin/marchybar emulate
+```
+
+The window uses the hardware framebuffer, both 2170 and 2008 geometries, and pointer input in place of the digitizer. Sliders, workspaces, and transport update the simulated session only. `--no-open` keeps the page on `http://127.0.0.1:8765/` without launching a browser.
+
 Read [architecture and protocol](docs/ARCHITECTURE.md), [validation](docs/VALIDATION.md), and the [research brief](research/MarchyBar-Research-Brief.md).
 
 ## Contributing and support

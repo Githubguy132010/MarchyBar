@@ -4,6 +4,8 @@ All notable changes to MarchyBar are documented here. This project follows [Sema
 
 ## Unreleased
 
+- Add `marchybar emulate`, an on-screen Touch Bar that uses the hardware renderer. Pointer drags drive preview sliders, workspaces, and Fn pages without leasing a device or running system actions.
+
 ## 1.0.1 — 2026-09-19
 
 - Correct the plugin author metadata to the repository owner (`Githubguy132010`) so the marketplace listing attributes MarchyBar correctly.

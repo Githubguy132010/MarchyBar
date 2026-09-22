@@ -24,9 +24,11 @@ export class MarchyBar {
     this.previewPath = path.join(this.runtimeDir, 'preview.png');
     this.hardware = diagnose(); this.status = previewOnly ? 'preview' : this.hardware.status;
     this.error = ''; this.lastHeartbeat = 0; this.locked = !previewOnly; this.manualPage = null; this.fn = false; this.trial = null; this.sceneRevision = 0;
+    this.previewAction = null;
     this.actions = new Actions({ live: this.live, isLocked: () => this.locked, isPreview: () => !this.device,
       onPreset: id => this.applyPreset(id), onPage: id => this.handle({ method: 'page', params: { id } }),
-      onEditor: () => this.broadcast({ event: 'openEditor' }), onTouchbar: (value, final) => this.setBrightness(value, final), onError: error => this.fail(error) });
+      onEditor: () => this.broadcast({ event: 'openEditor' }), onTouchbar: (value, final) => this.setBrightness(value, final),
+      onPreview: previewOnly ? action => { this.previewAction = { ...action, at: Date.now() }; } : undefined, onError: error => this.fail(error) });
     this.gesture = new Gesture({ action: a => this.actions.invoke(a), slider: (...args) => this.actions.slider(...args), changed: () => this.draw(), released: () => this.refresh() });
     this.live.on('change', () => this.refresh());
   }
@@ -47,7 +49,8 @@ export class MarchyBar {
     return { protocolVersion: PROTOCOL_VERSION, ...this.store.snapshot(), status: this.status, hardware: this.hardware,
       activePreset: a.id, activePage: a.page, reason: a.reason, geometry: this.geometry, locked: this.locked,
       data: this.data(), error: this.error, trialEnds: this.trial?.ends || null, frame: this.sequence,
-      previewPath: this.previewPath, widgetTypes: TYPES, channels: CHANNELS, theme: this.theme };
+      previewPath: this.previewPath, widgetTypes: TYPES, channels: CHANNELS, theme: this.theme,
+      fn: this.fn, previewAction: this.previewAction };
   }
   send(client, message) { if (!client.destroyed && client.writableLength < 2 * 1024 * 1024) client.write(JSON.stringify(message) + '\n'); }
   broadcast(message) { for (const c of this.clients) this.send(c, message); }
@@ -88,6 +91,16 @@ export class MarchyBar {
       catch (e) { this.fail(e.message); }
     }, 75);
   }
+  setPreviewGeometry(width) {
+    if (width !== 2008 && width !== 2170) throw new Error('Choose a 2008 or 2170 Touch Bar');
+    if (this.geometry.width === width) return;
+    this.gesture.cancel();
+    this.geometry = { width, height: 60 };
+    this.previewDisplay.close();
+    this.previewDisplay = new Preview(width, 60);
+    this.lastFrame = null;
+  }
+  capturePreview(file) { this.previewDisplay.display.screenshot(file); }
   renderPreview(preset, page, width) {
     const p = this.locked ? this.store.bundled.find(p => p.id === 'classic') : validatePreset(preset), geometry = { width: width || this.geometry.width, height: 60 };
     const s = scene(p, page || p.defaultPage, geometry, this.data(), this.theme);
@@ -228,8 +241,16 @@ export class MarchyBar {
       case 'diagnostics': return { ...diagnose(), node: process.version, protocol: PROTOCOL_VERSION, backend: VERSION, geometry: this.geometry, status: this.status, errors: this.store.errors, error: this.error };
       case 'simulate': {
         if (!this.previewOnly) throw new Error('Simulation is available only in a preview-only instance');
-        if (params.data) this.live.update(params.data);
-        if (typeof params.locked === 'boolean') this.locked = params.locked;
+        if (params.width) this.setPreviewGeometry(params.width);
+        if (typeof params.fn === 'boolean') this.fn = params.fn;
+        if (typeof params.locked === 'boolean') {
+          if (params.locked && !this.locked) this.gesture.cancel();
+          this.locked = params.locked;
+        }
+        if (params.data || params.width || typeof params.fn === 'boolean' || typeof params.locked === 'boolean') {
+          if (params.data) this.live.update(params.data);
+          else this.refresh();
+        }
         if (params.input) this.input(params.input.phase, params.input.x, params.input.y);
         this.refresh(); return true;
       }

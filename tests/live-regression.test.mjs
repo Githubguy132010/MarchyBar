@@ -139,6 +139,32 @@ test('context requests during an in-flight batch coalesce into a trailing refres
   assert.equal(selectPreset({ presets, settings: DEFAULT_SETTINGS, rules: DEFAULT_RULES, context: live.data }).id, 'developer');
 });
 
+test('preview gestures update the session and never call the system', async () => {
+  const updates = [];
+  const live = {
+    data: { volume: 10, media: { player: 'spotify', status: 'Paused', length: 200, position: 0 } },
+    update(patch) { this.data = { ...this.data, ...patch }; updates.push(patch); },
+  };
+  const touchbar = [];
+  const actions = new Actions({
+    live, isLocked: () => false, isPreview: () => true,
+    onTouchbar: (value, final) => touchbar.push([value, final]),
+    onError: error => { throw new Error(error); },
+  });
+  actions.slider('volume', 40, true);
+  actions.slider('seek', 25, false);
+  actions.slider('touchbar', 10, false);
+  assert.equal(live.data.volume, 40);
+  assert.equal(live.data.media.position, 50);
+  assert.deepEqual(touchbar, [[10, false]]);
+  await actions.invoke({ type: 'workspace', workspace: 3 });
+  assert.equal(live.data.workspace, 3);
+  await actions.invoke({ type: 'media', command: 'play-pause' });
+  assert.equal(live.data.media.status, 'Playing');
+  await actions.invoke({ type: 'key', key: 'F5', modifiers: [] });
+  assert.deepEqual(updates.at(-1) ? live.data.volume : null, 40);
+});
+
 for (const stopped of [false, true]) {
   test(`pending context refresh ${stopped ? 'stops without publishing' : 'retries a failed batch when dirty'}`, { timeout: 2000 }, async t => {
     const live = new LiveData();

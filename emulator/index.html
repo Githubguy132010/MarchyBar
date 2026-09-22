@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MarchyBar Touch Bar</title>
+<style>
+  :root {
+    --stage: #282828;
+    --ink: #d3bd97;
+    --muted: #8d7f68;
+    --line: #3a3936;
+    --chip: #32312e;
+    --chip-hover: #3a3935;
+    --well: #101114;
+    --key: #1a1b1e;
+    --key-ink: #c7b79a;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background:
+      radial-gradient(1200px 420px at 50% 0%, #343432 0%, transparent 60%),
+      var(--stage);
+    color: var(--ink);
+    font-family: Inter, "Noto Sans", sans-serif;
+    user-select: none;
+  }
+  .app {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 28px 32px 24px;
+    gap: 22px;
+  }
+  header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 650;
+    letter-spacing: -0.03em;
+  }
+  .tagline { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  .status-pill {
+    color: var(--muted);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .status-pill strong { color: var(--ink); font-weight: 600; }
+  .stage { display: flex; flex-direction: column; gap: 10px; }
+  .kicker {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .deck {
+    background: linear-gradient(#1a1a1c, #121214 70%);
+    border: 1px solid #0c0c0e;
+    border-radius: 16px;
+    padding: 18px 18px 14px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  .slot {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    min-height: 52px;
+  }
+  .esc {
+    display: none;
+    flex: 0 0 74px;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(#2a2b2e, #1c1d20);
+    color: var(--key-ink);
+    border-radius: 6px;
+    border: 1px solid #0e0e10;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 0 #000;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+  }
+  .deck.physical .esc { display: flex; }
+  .oled {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: #05060a;
+    padding: 5px;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px #000, 0 0 24px rgba(122, 162, 247, 0.05);
+    cursor: pointer;
+    touch-action: none;
+  }
+  .deck.physical .oled { flex: 1 1 auto; }
+  .oled img {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #1a1b26;
+    pointer-events: none;
+  }
+  .oled.dragging { cursor: grabbing; }
+  .keys {
+    display: grid;
+    grid-template-columns: 1.3fr repeat(12, 1fr) 1.7fr;
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .keys span {
+    height: 42px;
+    border-radius: 6px;
+    background: linear-gradient(#2c2d31, #222327);
+    border: 1px solid #141518;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    color: #9c9284;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .readout {
+    min-height: 22px;
+    margin: 2px 2px 0;
+    color: var(--ink);
+    font-size: 14px;
+  }
+  .readout span { color: var(--muted); }
+  .controls { display: flex; flex-direction: column; gap: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .label {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-right: 4px;
+  }
+  button {
+    appearance: none;
+    border: 1px solid transparent;
+    background: var(--chip);
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--chip-hover); }
+  button[aria-pressed="true"] {
+    background: #3d3a34;
+    border-color: #d3bd97;
+  }
+  button:focus-visible { outline: 2px solid #d3bd97; outline-offset: 2px; }
+  button.hold { min-width: 108px; }
+  .spacer { flex: 1; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>MarchyBar</h1>
+        <p class="tagline">Your Touch Bar, at home in Omarchy.</p>
+      </div>
+      <div class="status-pill" id="pill">○ Preview</div>
+    </header>
+    <section class="stage">
+      <p class="kicker">Live preview · same renderer as the Touch Bar</p>
+      <div class="deck" id="deck">
+        <div class="slot">
+          <div class="esc" aria-hidden="true">esc</div>
+          <div class="oled" id="oled">
+            <img id="bar" alt="Touch Bar" draggable="false" width="2170" height="60">
+          </div>
+        </div>
+        <div class="keys" aria-hidden="true">
+          <span>`</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>0</span><span>-</span><span>=</span><span>delete</span>
+        </div>
+      </div>
+      <p class="readout" id="readout"><span>Touch the bar. Drag a slider. Hold Fn for the alternate page.</span></p>
+    </section>
+    <section class="controls">
+      <div class="row" id="presets">
+        <span class="label">Presets</span>
+      </div>
+      <div class="row">
+        <span class="label">Panel</span>
+        <button type="button" id="wide" aria-pressed="true">2170 · on-screen Esc</button>
+        <button type="button" id="narrow" aria-pressed="false">2008 · physical Esc</button>
+        <button type="button" class="hold" id="fn" aria-pressed="false">Hold Fn</button>
+        <span class="spacer"></span>
+        <button type="button" id="automatic" aria-pressed="true">Automatic</button>
+      </div>
+      <div class="row" id="scenes">
+        <span class="label">Session</span>
+        <button type="button" data-scene="desktop">Desktop</button>
+        <button type="button" data-scene="browser">Browser</button>
+        <button type="button" data-scene="code">Code</button>
+        <button type="button" data-scene="music">Music</button>
+        <button type="button" id="lock">Lock</button>
+      </div>
+    </section>
+  </div>
+  <script>
+    const PRESETS = [
+      ['everyday', 'Everyday'],
+      ['focus', 'Focus'],
+      ['media', 'Media'],
+      ['developer', 'Developer'],
+      ['browser', 'Browser'],
+      ['classic', 'Classic'],
+    ];
+    const SCENES = {
+      desktop: { app: '', title: '', media: {} },
+      browser: { app: 'chromium', title: 'MarchyBar — GitHub', media: {} },
+      code: { app: 'code', title: 'scene.mjs — MarchyBar', media: {} },
+      music: {
+        app: 'spotify',
+        title: 'Spotify',
+        media: { player: 'spotify', status: 'Playing', title: 'Night Owl', artist: 'Galimatias', length: 214, position: 62 },
+      },
+    };
+    const base = {
+      workspace: 1,
+      workspaces: [1, 2, 3, 4, 5].map(id => ({ id })),
+      volume: 62,
+      brightness: 48,
+      keyboard: 30,
+      battery: 81,
+      charging: false,
+      cpu: 14,
+      memory: 46,
+    };
+
+    const oled = document.getElementById('oled');
+    const bar = document.getElementById('bar');
+    const deck = document.getElementById('deck');
+    const readout = document.getElementById('readout');
+    const pill = document.getElementById('pill');
+    let state = null;
+    let pointing = null;
+    let frameQueue = Promise.resolve();
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[character]));
+    }
+    function describe(action) {
+      if (!action) return '';
+      if (action.type === 'slider') {
+        const name = { volume: 'Volume', brightness: 'Display', keyboard: 'Keyboard', touchbar: 'Touch Bar', seek: 'Position' }[action.channel] || action.channel;
+        return name + ' ' + action.value + '%';
+      }
+      if (action.type === 'key') return 'Key ' + [...(action.modifiers || []), action.key].join('+');
+      if (action.type === 'workspace') return 'Workspace ' + action.workspace;
+      if (action.type === 'media') return action.command === 'play-pause' ? 'Play / pause' : action.command;
+      if (action.type === 'preset') return 'Preset ' + action.preset;
+      if (action.type === 'page') return 'Page ' + action.page;
+      if (action.type === 'editor') return 'Menu · open the editor';
+      return action.type || '';
+    }
+
+    function renderChrome() {
+      if (!state) return;
+      const width = state.geometry?.width || 2170;
+      deck.classList.toggle('physical', width < 2170);
+      document.getElementById('wide').setAttribute('aria-pressed', width >= 2170 ? 'true' : 'false');
+      document.getElementById('narrow').setAttribute('aria-pressed', width < 2170 ? 'true' : 'false');
+      document.getElementById('fn').setAttribute('aria-pressed', state.fn ? 'true' : 'false');
+      document.getElementById('automatic').setAttribute('aria-pressed', state.settings?.automatic && !state.settings?.pinnedPreset ? 'true' : 'false');
+      document.getElementById('lock').setAttribute('aria-pressed', state.locked ? 'true' : 'false');
+      document.getElementById('lock').textContent = state.locked ? 'Unlock' : 'Lock';
+      for (const button of document.querySelectorAll('#presets button[data-preset]')) {
+        button.setAttribute('aria-pressed', button.dataset.preset === state.activePreset && state.settings?.pinnedPreset === state.activePreset ? 'true' : 'false');
+      }
+      const preset = (state.presets || []).find(item => item.id === state.activePreset);
+      const recent = state.previewAction && Date.now() - state.previewAction.at < 2800 ? describe(state.previewAction) : '';
+      const where = (preset ? preset.name : 'Touch Bar') + (state.activePage && state.activePage !== 'main' ? ' · ' + state.activePage : '');
+      readout.innerHTML = recent
+        ? '<span>' + escapeHtml(where) + ' · </span>' + escapeHtml(recent)
+        : '<span>' + escapeHtml(where) + ' · ' + escapeHtml(state.reason || 'Preview') + '</span>';
+      pill.innerHTML = state.locked ? '○ Locked' : '○ <strong>Preview</strong>';
+    }
+
+    async function call(method, params) {
+      const response = await fetch('/api', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ method, params: params || {} }),
+      });
+      const body = await response.json();
+      if (!body.ok) throw new Error(body.error || 'Request failed');
+      state = body.state;
+      renderChrome();
+      return state;
+    }
+
+    function refreshFrame() {
+      frameQueue = frameQueue.then(async () => {
+        const response = await fetch('/frame.png', { cache: 'no-store' });
+        if (!response.ok) return;
+        const blob = await response.blob();
+        const next = URL.createObjectURL(blob);
+        const previous = bar.dataset.objectUrl;
+        await new Promise(resolve => { bar.onload = resolve; bar.src = next; });
+        bar.dataset.objectUrl = next;
+        if (previous) URL.revokeObjectURL(previous);
+      }).catch(() => {});
+      return frameQueue;
+    }
+
+    function point(event) {
+      const rect = bar.getBoundingClientRect();
+      const width = bar.naturalWidth || state?.geometry?.width || 2170;
+      const height = bar.naturalHeight || 60;
+      const x = (event.clientX - rect.left) / rect.width * width;
+      const y = (event.clientY - rect.top) / rect.height * height;
+      return { x: Math.min(width, Math.max(0, x)), y: Math.min(height, Math.max(0, y)) };
+    }
+
+    oled.addEventListener('pointerdown', async event => {
+      if (event.button !== 0) return;
+      oled.setPointerCapture(event.pointerId);
+      pointing = event.pointerId;
+      oled.classList.add('dragging');
+      const at = point(event);
+      await call('simulate', { input: { phase: 'start', x: at.x, y: at.y } });
+      await refreshFrame();
+    });
+    oled.addEventListener('pointermove', async event => {
+      if (pointing !== event.pointerId) return;
+      const at = point(event);
+      await call('simulate', { input: { phase: 'move', x: at.x, y: at.y } });
+      await refreshFrame();
+    });
+    async function release(event) {
+      if (pointing !== event.pointerId) return;
+      pointing = null;
+      oled.classList.remove('dragging');
+      const at = point(event);
+      await call('simulate', { input: { phase: 'end', x: at.x, y: at.y } });
+      await refreshFrame();
+    }
+    oled.addEventListener('pointerup', release);
+    oled.addEventListener('pointercancel', async event => {
+      if (pointing !== event.pointerId) return;
+      pointing = null;
+      oled.classList.remove('dragging');
+      await call('simulate', { input: { phase: 'cancel', x: 0, y: 0 } });
+      await refreshFrame();
+    });
+
+    const presetRow = document.getElementById('presets');
+    for (const [id, name] of PRESETS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.preset = id;
+      button.textContent = name;
+      button.addEventListener('click', async () => {
+        await call('preset.apply', { id });
+        await refreshFrame();
+      });
+      presetRow.appendChild(button);
+    }
+    document.getElementById('automatic').addEventListener('click', async () => {
+      await call('automatic');
+      await refreshFrame();
+    });
+    document.getElementById('wide').addEventListener('click', async () => {
+      await call('simulate', { width: 2170, fn: false });
+      await refreshFrame();
+    });
+    document.getElementById('narrow').addEventListener('click', async () => {
+      await call('simulate', { width: 2008, fn: false });
+      await refreshFrame();
+    });
+    const fn = document.getElementById('fn');
+    async function setFn(down) {
+      if (Boolean(state?.fn) === down) return;
+      await call('simulate', { fn: down });
+      await refreshFrame();
+    }
+    fn.addEventListener('pointerdown', event => { fn.setPointerCapture(event.pointerId); setFn(true); });
+    fn.addEventListener('pointerup', () => setFn(false));
+    fn.addEventListener('pointercancel', () => setFn(false));
+    for (const button of document.querySelectorAll('#scenes button[data-scene]')) {
+      button.addEventListener('click', async () => {
+        await call('automatic');
+        await call('simulate', { locked: false, fn: false, data: { ...base, ...SCENES[button.dataset.scene] } });
+        await refreshFrame();
+      });
+    }
+    document.getElementById('lock').addEventListener('click', async () => {
+      await call('simulate', { locked: !state.locked, fn: false });
+      await refreshFrame();
+    });
+
+    call('get').then(refreshFrame);
+    setInterval(() => { if (!pointing) refreshFrame().then(renderChrome); }, 1000);
+  </script>
+</body>
+</html>
