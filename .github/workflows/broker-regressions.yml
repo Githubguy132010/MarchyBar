@@ -1,0 +1,28 @@
+name: Broker security regressions
+
+on:
+  push:
+    paths:
+      - 'packaging/**'
+      - 'bin/system-action.py'
+      - 'tests/*_test.py'
+      - '.github/workflows/broker-regressions.yml'
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - 'bin/system-action.py'
+      - 'tests/*_test.py'
+      - '.github/workflows/broker-regressions.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests -p '*_test.py'

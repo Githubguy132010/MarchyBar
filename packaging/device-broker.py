@@ -200,6 +200,10 @@ class Handler(socketserver.StreamRequestHandler):
     mine = None
     self.write_lock = threading.Lock()
     try:
+      # Authenticate before an idle peer can hold a handler in readline().
+      # Keep the per-operation check below: sessions can change after admission.
+      if not active_local(uid):
+        return
       self.request.settimeout(20)
       while True:
         raw = self.rfile.readline(4097)
@@ -386,6 +390,30 @@ def recover():
 
 class Server(socketserver.ThreadingUnixStreamServer):
   daemon_threads = True
+  max_handlers = 8
+  request_queue_size = 8
+
+  def __init__(self, *args, **kwargs):
+    self.handler_slots = threading.BoundedSemaphore(self.max_handlers)
+    super().__init__(*args, **kwargs)
+
+  def process_request(self, request, client_address):
+    # Never block the accept loop or spawn a thread while at capacity. This
+    # also bounds concurrent logind checks, not just authenticated readers.
+    if not self.handler_slots.acquire(blocking=False):
+      self.shutdown_request(request)
+      return
+    try:
+      super().process_request(request, client_address)
+    except BaseException:
+      self.handler_slots.release()
+      raise
+
+  def process_request_thread(self, request, client_address):
+    try:
+      super().process_request_thread(request, client_address)
+    finally:
+      self.handler_slots.release()
 
 
 def stop(signum, frame):

@@ -3,18 +3,182 @@ import io
 import json
 import os
 from pathlib import Path
+import socket
 import struct
 import subprocess
 import tempfile
+import threading
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from setup_test import SetupTest
 from system_action_test import SystemActionTest
 
 spec = importlib.util.spec_from_file_location('broker', Path(__file__).parents[1] / 'packaging/device-broker.py')
 broker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(broker)
+
+class AdmissionTest(unittest.TestCase):
+  def test_unauthorized_peer_is_rejected_without_reading(self):
+    for uid in (0, 999, 1001):
+      with self.subTest(uid=uid):
+        handler = broker.Handler.__new__(broker.Handler)
+        handler.request = Mock()
+        handler.request.getsockopt.return_value = struct.pack('3i', 123, uid, uid)
+        handler.rfile = Mock()
+        handler.wfile = io.BytesIO()
+        with patch.object(broker, 'active_local', return_value=False) as auth:
+          handler.handle()
+        auth.assert_called_once_with(uid)
+        handler.request.getsockopt.assert_called_once_with(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
+        handler.rfile.readline.assert_not_called()
+        handler.request.settimeout.assert_not_called()
+
+  def test_authorization_failure_is_closed_without_reading(self):
+    handler = broker.Handler.__new__(broker.Handler)
+    handler.request = Mock()
+    handler.request.getsockopt.return_value = struct.pack('3i', 123, 1000, 1000)
+    handler.rfile = Mock()
+    with patch.object(broker, 'active_local', side_effect=RuntimeError('logind unavailable')):
+      with self.assertRaisesRegex(RuntimeError, 'logind unavailable'):
+        handler.handle()
+    handler.rfile.readline.assert_not_called()
+
+  def start_server(self):
+    tmp = tempfile.TemporaryDirectory()
+    self.addCleanup(tmp.cleanup)
+    self.enterContext(patch.object(broker, 'RECOVERY', Path(tmp.name) / 'lease.json'))
+    class SmallServer(broker.Server):
+      max_handlers = 2
+    try:
+      server = SmallServer(str(Path(tmp.name) / 'broker.sock'), broker.Handler)
+    except PermissionError:
+      self.skipTest('This runner disallows Unix sockets; run on a Linux host with AF_UNIX support')
+    self.addCleanup(server.server_close)
+    thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01})
+    thread.start()
+    self.addCleanup(thread.join, 2)
+    self.addCleanup(server.shutdown)
+    return server
+
+  def connect(self, server):
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(2)
+    self.addCleanup(client.close)
+    client.connect(server.server_address)
+    return client
+
+  def test_idle_connections_are_bounded_and_slots_reused(self):
+    entered = threading.Condition()
+    started = 0
+    def auth(uid):
+      nonlocal started
+      self.assertEqual(uid, os.getuid())
+      with entered:
+        started += 1
+        entered.notify_all()
+      return True
+    self.enterContext(patch.object(broker, 'active_local', side_effect=auth))
+    server = self.start_server()
+    idle = [self.connect(server) for _ in range(server.max_handlers)]
+    with entered:
+      self.assertTrue(entered.wait_for(lambda: started == server.max_handlers, timeout=2))
+    # No bytes sent: these connections hold all available handler slots.
+    for _ in range(20):
+      extra = self.connect(server)
+      self.assertEqual(extra.recv(1), b'')
+      extra.close()
+    self.assertEqual(started, server.max_handlers)
+    finished = threading.Event()
+    original = server.process_request_thread
+    def tracked(*args):
+      try:
+        original(*args)
+      finally:
+        finished.set()
+    with patch.object(server, 'process_request_thread', side_effect=tracked):
+      # Existing threads captured the original method, so use a semaphore
+      # acquire to wait for disconnect cleanup instead of timing sleeps.
+      idle[0].close()
+      self.assertTrue(server.handler_slots.acquire(timeout=2))
+      server.handler_slots.release()
+      replacement = self.connect(server)
+      replacement.sendall(b'{"id":1,"action":"release"}\n')
+      with replacement.makefile('rb') as reader:
+        self.assertTrue(json.loads(reader.readline())['ok'])
+      replacement.close()
+      self.assertTrue(finished.wait(2))
+    for client in idle:
+      client.close()
+
+  def test_unauthorized_idle_connections_do_not_exhaust_service(self):
+    allowed = False
+    self.enterContext(patch.object(broker, 'active_local', side_effect=lambda uid: allowed))
+    server = self.start_server()
+    for _ in range(20):
+      client = self.connect(server)
+      self.assertEqual(client.recv(1), b'')
+      client.close()
+    # Wait for the final rejection's slot release before admitting the user.
+    self.assertTrue(server.handler_slots.acquire(timeout=2))
+    self.assertTrue(server.handler_slots.acquire(timeout=2))
+    server.handler_slots.release()
+    server.handler_slots.release()
+    allowed = True
+    client = self.connect(server)
+    client.sendall(b'{"id":1,"action":"release"}\n')
+    with client.makefile('rb') as reader:
+      self.assertTrue(json.loads(reader.readline())['ok'])
+    client.close()
+
+  def test_thread_start_failure_returns_slot(self):
+    server = broker.Server.__new__(broker.Server)
+    server.handler_slots = threading.BoundedSemaphore(server.max_handlers)
+    with patch.object(threading.Thread, 'start', side_effect=RuntimeError('cannot start')):
+      with self.assertRaisesRegex(RuntimeError, 'cannot start'):
+        server.process_request(Mock(), '')
+    for _ in range(server.max_handlers):
+      self.assertTrue(server.handler_slots.acquire(blocking=False))
+
+  def test_dispatch_caps_idle_handlers_and_releases_after_error(self):
+    # Exercise real ThreadingMixIn dispatch with idle readers represented by
+    # an Event, so the concurrency regression also runs in socketless runners.
+    server = broker.Server.__new__(broker.Server)
+    server.handler_slots = threading.BoundedSemaphore(server.max_handlers)
+    idle = threading.Event()
+    entered = threading.Condition()
+    started = 0
+    def finish(request, address):
+      nonlocal started
+      with entered:
+        started += 1
+        entered.notify_all()
+      if not idle.wait(2):
+        raise AssertionError('test did not release idle handler')
+      raise RuntimeError('injected handler failure')
+    server.finish_request = finish
+    server.shutdown_request = Mock()
+    server.handle_error = Mock()
+    self.addCleanup(idle.set)
+    for _ in range(server.max_handlers):
+      server.process_request(Mock(), '')
+    with entered:
+      self.assertTrue(entered.wait_for(lambda: started == server.max_handlers, timeout=2))
+    for _ in range(20):
+      server.process_request(Mock(), '')
+    self.assertEqual(started, server.max_handlers)
+    self.assertEqual(server.shutdown_request.call_count, 20)
+    idle.set()
+    for _ in range(server.max_handlers):
+      self.assertTrue(server.handler_slots.acquire(timeout=2))
+    self.assertEqual(server.handle_error.call_count, server.max_handlers)
+    for _ in range(server.max_handlers):
+      server.handler_slots.release()
+    # Capacity is reusable after exceptions, without increasing the ceiling.
+    server.process_request(Mock(), '')
+    for _ in range(server.max_handlers):
+      self.assertTrue(server.handler_slots.acquire(timeout=2))
+    self.assertEqual(started, server.max_handlers + 1)
 
 class BrokerTest(unittest.TestCase):
   def test_only_active_local_user_can_acquire(self):
@@ -26,8 +190,12 @@ class BrokerTest(unittest.TestCase):
       self.assertTrue(broker.active_local(1000))
       self.assertFalse(broker.active_local(0))
       self.assertFalse(broker.active_local(1001))
-    with patch.object(broker, 'command', side_effect=['1 1000 example', 'User=1000\nActive=yes\nRemote=yes\nClass=user']):
-      self.assertFalse(broker.active_local(1000))
+    for props in ('User=1000\nActive=yes\nRemote=yes\nClass=user',
+                  'User=1000\nActive=no\nRemote=no\nClass=user',
+                  'User=1000\nActive=yes\nRemote=no\nClass=greeter',
+                  'User=1001\nActive=yes\nRemote=no\nClass=user'):
+      with self.subTest(props=props), patch.object(broker, 'command', side_effect=['1 1000 example', props]):
+        self.assertFalse(broker.active_local(1000))
 
   def test_mode_change_requires_device_identity(self):
     with tempfile.TemporaryDirectory() as tmp:
@@ -505,6 +673,23 @@ class RecoveryTest(unittest.TestCase):
                                  {'id': 3, 'action': 'ping'}]))
     self.assertFalse(replies[2]['ok'])
     self.assertFalse(replies[3]['ok'])
+    self.assert_restored()
+
+  def test_session_loss_rejects_operations_but_allows_owner_cleanup(self):
+    active = True
+    def inactive():
+      nonlocal active
+      active = False
+    with patch.object(broker, 'active_local', side_effect=lambda uid: active):
+      replies = self.handler(iter([{'id': 1, 'action': 'acquire'}, inactive,
+                                   {'id': 2, 'action': 'brightness', 'value': 0},
+                                   {'id': 3, 'action': 'ping'},
+                                   {'id': 4, 'action': 'release'}]))
+    self.assertTrue(replies[1]['ok'])
+    self.assertFalse(replies[2]['ok'])
+    self.assertFalse(replies[3]['ok'])
+    self.assertTrue(replies[4]['ok'])
+    self.assertIsNone(broker.LEASE)
     self.assert_restored()
 
   def test_release_reports_incomplete_cleanup_and_retry_recovers(self):
